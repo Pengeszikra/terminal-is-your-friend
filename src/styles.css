@@ -1,0 +1,47 @@
+/* Coded by OpenAI Codex. Tailwind with a small shared overlay editor style. */
+@import "tailwindcss";
+@source "../index.html";
+@source "./*.ts";
+
+:root { color-scheme: dark; }
+body { margin: 0; }
+button { cursor: pointer; }
+button:disabled { cursor: wait; opacity: .5; }
+::selection { background: #35513e; color: #f4fff5; }
+.editor { position: relative; min-width: 0; }
+.editor pre, .editor textarea {
+    margin: 0; padding: .25rem 0; border: 0; width: 100%;
+    font: inherit; font-size: 1rem; line-height: 1.65rem;
+    letter-spacing: normal; tab-size: 2; white-space: pre-wrap;
+    overflow-wrap: anywhere; word-break: normal;
+}
+.editor pre { pointer-events: none; min-height: 3.8rem; }
+.editor textarea {
+    position: absolute; inset: 0; height: 100%; resize: none; outline: none;
+    color: transparent; caret-color: #a9efba; background: transparent;
+    -webkit-text-fill-color: transparent; overflow: hidden;
+}
+.editor textarea::placeholder { color: #728377; -webkit-text-fill-color: #728377; }
+.editor textarea:disabled { cursor: wait; }
+.tok-keyword { color: #b6a9ea; }
+.tok-number { color: #e6bc84; }
+.tok-string { color: #a5d8a1; }
+.tok-comment { color: #7e9181; }
+.tok-operator { color: #86c9d6; }
+.tok-name { color: #d6e0d7; }
+.has-errors .tok-keyword { color: #e8a0bd; }
+.has-errors .tok-number { color: #ffb099; }
+.has-errors .tok-string { color: #d89285; }
+.has-errors .tok-comment { color: #ab7a83; }
+.has-errors .tok-operator { color: #ff8896; }
+.has-errors .tok-name { color: #e6bbc1; }
+.entry { display: grid; grid-template-columns: 1.5rem minmax(0, 1fr); gap: .5rem; font-size: 1rem; line-height: 1.65rem; }
+.entry pre { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; }
+.entry-marker { user-select: none; color: #6e8474; }
+.entry-command { margin-top: 1.2rem; color: #d6e0d7; }
+.entry-result { color: #a9dfb4; }
+.entry-error { color: #f6a0a0; }
+.entry-warn { color: #e6bc84; }
+.entry-note { color: #94a499; }
+#terminal { scrollbar-color: #3f5144 #101411; scrollbar-width: thin; }
+@media (prefers-reduced-motion: no-preference) { button { transition: color .15s ease; } }

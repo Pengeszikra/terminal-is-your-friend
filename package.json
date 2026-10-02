@@ -1,0 +1,28 @@
+{
+  "_comment": "Terminal Is Your Friend — code by OpenAI Codex.",
+  "name": "terminal-is-your-friend",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.18"
+  },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "start": "npm run build && node server/index.mjs",
+    "dev": "npm start",
+    "preview": "node server/index.mjs",
+    "test": "npm run build && node --test tests/*.test.mjs",
+    "test:browser": "npm run build && node scripts/test-browser.mjs"
+  },
+  "dependencies": {
+    "@pengeszikra/typescript": "7.1.0-pipeline.1",
+    "quickjs-emscripten": "0.32.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/cli": "4.3.3",
+    "esbuild": "0.28.2",
+    "playwright": "1.62.1",
+    "tailwindcss": "4.3.3"
+  }
+}

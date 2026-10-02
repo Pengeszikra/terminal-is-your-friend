@@ -1,0 +1,7 @@
+# Written by OpenAI Codex.
+node_modules/
+dist/
+.compiled/
+.env
+*.log
+test-results/
