@@ -20,5 +20,6 @@ await build({
 });
 execFileSync(process.execPath, [join(root, "node_modules/@tailwindcss/cli/dist/index.mjs"), "-i", "src/styles.css", "-o", "dist/styles.css", "--minify"], { cwd: root, stdio: "inherit" });
 await copyFile(join(root, "index.html"), join(root, "dist/index.html"));
+await copyFile(join(root, "favicon.svg"), join(root, "dist/favicon.svg"));
 await copyFile(require.resolve("@jitl/quickjs-wasmfile-release-sync/wasm"), join(root, "dist/emscripten-module.wasm"));
 console.log("Built with the pipeline TypeScript fork + Tailwind.");
