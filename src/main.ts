@@ -24,12 +24,15 @@ let requestId = 0;
 let checkController: AbortController | undefined;
 let pending: { id: number; source: string } | undefined;
 let instructorContext: { kind: string; text: string }[] = [];
+let idleTimer = 0;
+let introduced = false;
+let instructorRequest: { controller: AbortController; kind: string } | undefined;
 
 // Coded by OpenAI Codex.
 const scroll = () => { terminal.scrollTop = terminal.scrollHeight; };
 const label = (text: string) => { status.textContent = text; };
-const append = (kind: string, text: string, marker = "") => {
-    instructorContext.push({ kind, text: text.slice(0, 1200) });
+const append = (kind: string, text: string, marker = "", example = "") => {
+    instructorContext.push({ kind, text: (text + (example ? "\n" + example : "")).slice(0, 1200) });
     if (instructorContext.length > 12) instructorContext.shift();
     const row = document.createElement("div");
     row.className = `entry entry-${kind}`;
@@ -40,17 +43,69 @@ const append = (kind: string, text: string, marker = "") => {
     const content = document.createElement("pre");
     if (kind === "command") highlight(text, content);
     else content.textContent = text;
-    row.append(prefix, content);
+    const body = document.createElement("div");
+    body.className = "entry-body";
+    body.append(content);
+    if (example) {
+        const sample = document.createElement("pre");
+        sample.className = "instructor-code";
+        const sampleCode = document.createElement("code");
+        highlight(example, sampleCode);
+        sample.append(sampleCode);
+        body.append(sample);
+    }
+    row.append(prefix, body);
     output.append(row);
     while (output.children.length > 300) output.firstElementChild?.remove();
     scroll();
 };
 
 // Coded by OpenAI Codex.
-const welcome = () => {
-    append("note", "TypeScript, with room to think.");
-    append("note", "Try: 21 |> ((n: number) => n * 2)");
-    append("note", "Ask: // What does the pipeline operator do?");
+const cancelInstructor = () => {
+    instructorRequest?.controller.abort();
+    instructorRequest = undefined;
+};
+
+const askInstructor = async (details: { kind: "question" | "welcome" | "error"; question?: string; source?: string; error?: string; phase?: "compile" | "runtime" }, context = instructorContext.slice()) => {
+    cancelInstructor();
+    window.clearTimeout(idleTimer);
+    introduced = true;
+    const controller = new AbortController();
+    instructorRequest = { controller, kind: details.kind };
+    try {
+        const response = await fetch("/api/instructor", {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ ...details, context }), signal: AbortSignal.any([controller.signal, AbortSignal.timeout(25_000)]),
+        });
+        const result = await response.json();
+        if (controller.signal.aborted) return;
+        if (!response.ok || !result.ok || typeof result.answer !== "string") append("error", result.error || "Instructor request failed.", "!");
+        else append("answer", result.answer, "AI", typeof result.code === "string" ? result.code : "");
+    } catch {
+        if (!controller.signal.aborted) append("error", "Could not reach the instructor. Please try again.", "!");
+    } finally {
+        if (instructorRequest?.controller === controller) instructorRequest = undefined;
+    }
+};
+
+const scheduleIntroduction = () => {
+    window.clearTimeout(idleTimer);
+    if (introduced || !ready || busy || input.value.trim() || document.hidden) return;
+    idleTimer = window.setTimeout(() => {
+        if (!introduced && ready && !busy && !input.value.trim() && !document.hidden) void askInstructor({ kind: "welcome" });
+    }, 10_000);
+};
+
+const activity = () => {
+    if (instructorRequest?.kind === "welcome") {
+        cancelInstructor();
+        introduced = false;
+    }
+    scheduleIntroduction();
+};
+
+const explainError = (source: string, error: string, phase: "compile" | "runtime") => {
+    void askInstructor({ kind: "error", source, error, phase });
 };
 
 // Coded by OpenAI Codex.
@@ -68,6 +123,7 @@ const finish = () => {
     label("TS |> · sandbox ready");
     input.focus();
     scroll();
+    scheduleIntroduction();
 };
 
 // Coded by OpenAI Codex. A watchdog can terminate the entire worker even if the guest misbehaves.
@@ -87,6 +143,7 @@ const startWorker = () => {
             else append(message.kind, message.text);
         } else if (event.data.type === "result" && pending && pending.id === event.data.id) {
             const result = event.data.result as Evaluation;
+            const source = pending.source;
             if (result.ok) {
                 accepted.push(pending.source);
                 append("result", result.value ?? "undefined", "←");
@@ -98,6 +155,7 @@ const startWorker = () => {
                 }
             }
             finish();
+            if (!result.ok) explainError(source, result.error ?? "Execution failed.", "runtime");
         } else if (event.data.type === "fatal") {
             window.clearTimeout(watchdog);
             accepted = [];
@@ -161,6 +219,8 @@ const submit = async () => {
         return;
     }
     const context = instructorContext.slice();
+    cancelInstructor();
+    window.clearTimeout(idleTimer);
     window.clearTimeout(checkTimer);
     checkController?.abort();
     history.push(source);
@@ -176,15 +236,7 @@ const submit = async () => {
     if (question !== null) {
         label("Asking instructor…");
         try {
-            const response = await fetch("/api/instructor", {
-                method: "POST", headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ question, context }), signal: AbortSignal.timeout(25_000),
-            });
-            const result = await response.json();
-            if (!response.ok || !result.ok || typeof result.answer !== "string") append("error", result.error || "Instructor request failed.", "!");
-            else append("answer", result.answer, "AI");
-        } catch {
-            append("error", "Could not reach the instructor. Please try again.", "!");
+            await askInstructor({ kind: "question", question }, context);
         } finally { finish(); }
         return;
     }
@@ -195,14 +247,22 @@ const submit = async () => {
             body: JSON.stringify({ source, history: accepted }), signal: AbortSignal.timeout(15_000),
         });
         const compiled = await response.json();
-        if (!response.ok || !compiled.ok) { append("error", compiled.error || "Compilation failed.", "!"); finish(); return; }
+        if (!response.ok || !compiled.ok) {
+            const error = compiled.error || "Compilation failed.";
+            append("error", error, "!");
+            finish();
+            if (response.ok) explainError(source, error, "compile");
+            return;
+        }
         pending = { id: ++requestId, source };
         label("Running…");
         watchdog = window.setTimeout(() => {
-            append("error", "Sandbox stopped after 3 seconds. Variables cleared; history preserved.", "!");
+            const error = "Sandbox stopped after 3 seconds. Variables cleared; history preserved.";
+            append("error", error, "!");
             accepted = [];
             pending = undefined;
             startWorker();
+            explainError(source, error, "runtime");
         }, 3_000);
         worker.postMessage({ type: "run", id: pending.id, javascript: compiled.javascript });
     } catch (error) {
@@ -219,6 +279,7 @@ input.addEventListener("input", () => {
     } else validDraft = input.value;
     redraw();
     scheduleCheck();
+    activity();
 });
 
 // Coded by OpenAI Codex. Reject oversized pastes whole, without silently truncating the program.
@@ -254,8 +315,25 @@ input.addEventListener("keydown", event => {
 });
 
 // Coded by OpenAI Codex.
-document.querySelector("#clear")!.addEventListener("click", () => { output.replaceChildren(); input.focus(); });
+const clearScreen = () => {
+    cancelInstructor();
+    window.clearTimeout(idleTimer);
+    introduced = true;
+    output.replaceChildren();
+    input.focus();
+};
+document.querySelector("#clear")!.addEventListener("click", clearScreen);
+document.addEventListener("keydown", event => {
+    if (event.ctrlKey && event.key.toLowerCase() === "l") {
+        event.preventDefault();
+        clearScreen();
+    } else activity();
+}, { capture: true });
+document.addEventListener("pointerdown", activity);
+document.addEventListener("visibilitychange", activity);
 resetButton.addEventListener("click", () => {
+    cancelInstructor();
+    window.clearTimeout(idleTimer);
     window.clearTimeout(checkTimer);
     checkController?.abort();
     accepted = [];
@@ -264,6 +342,5 @@ resetButton.addEventListener("click", () => {
     append("note", "Session reset. Variables and instructor context cleared; command history preserved.");
     startWorker();
 });
-welcome();
 redraw();
 startWorker();

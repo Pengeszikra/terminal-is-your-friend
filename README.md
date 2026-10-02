@@ -4,8 +4,8 @@
 A small, dark web terminal for exploring JavaScript and TypeScript fundamentals,
 powered by Peter Vivo's type-safe pipeline-operator TypeScript fork.
 The interface uses Tailwind CSS. An AI instructor powered by the open-weight
-**gpt-oss-120b** model through Groq answers explicit questions in
-2–4 short English sentences, using recent terminal activity as context.
+**gpt-oss-120b** model through Groq answers questions and explains code errors in
+2–4 short English sentences, with separate syntax-highlighted code examples.
 
 All project documentation, interface text, messages, comments, and examples are written in English.
 
@@ -74,17 +74,33 @@ Submit a standalone single-line question with `//`:
 ```
 
 The instructor answers questions on any topic, with no programming-only restriction.
-The response schema requests 2–4 sentence items, and the server caps the displayed answer
-at four sentences. Replies appear as plain text with an `AI` marker and are never executed.
+The response schema requests 2–4 sentence items and a separate code field; the server caps
+the displayed prose at four sentences. Examples appear in separate syntax-highlighted
+code blocks below the explanation. Neither prose nor examples are interpreted as HTML
+or executed. An `AI` marker identifies instructor replies.
 Comments inside multiline code remain ordinary TypeScript comments. AI questions do not
 change variables, consume compilation history slots, or trigger background type-checking.
 
-Only submitting a question calls Groq. The question and up to 12 recent terminal entries
+The terminal starts with no output. After 10 seconds of inactivity with an empty input,
+the instructor introduces itself and asks about programming experience. Typing, keyboard
+activity and clicks postpone the introduction; it does not repeat during the page session.
+An explicit question or an error explanation also suppresses the introductory message.
+
+Submitting a question, the one-time idle introduction, and submitted-code compilation or
+runtime failures call Groq. Background type-checking while typing does not call the AI.
+For failures, the instructor receives the complete submitted code (up to 8 KB / 100 lines),
+the error message (up to 16,000 characters), and whether compilation or execution failed.
+It is prompted to explain the likely cause and correction rather than repeat the error.
+Explanations run in the background, so the learner can keep editing and executing code.
+
+Each request also includes up to 12 recent terminal entries
 (at most 1,200 characters each) are sent as context, including code, results, errors, and
 previous questions and answers. This is a partial transcript, not the full runtime state.
-`Reset session` clears that context; `Clear` only clears visible output.
+`Reset session` clears that context; `Clear` and **Ctrl+L** only clear visible output.
+Clearing, resetting, or submitting again cancels pending instructor output, so stale replies
+do not reappear after a clear or attach to a newer submission.
 The Responses API request uses `store: false`; Groq's data policies still apply.
-There are no unsolicited hints, automatic error explanations, tools, or code execution by the AI.
+The AI has no tools or ability to execute code. Its explanations can be mistaken.
 
 Each call has a 20-second timeout, low reasoning effort, and a 2,048-output-token
 budget that includes reasoning. Only the final answer is displayed; reasoning
@@ -127,7 +143,7 @@ configure platform-level rate limiting to control compiler usage.
 - **↑ / ↓:** recall the previous or next submission when the cursor is on the first or last line.
 - **Alt+↑ / Alt+↓:** navigate history from any line of a multiline block.
 - **Tab:** insert two spaces.
-- **Clear:** clear the visible output while keeping variables.
+- **Clear / Ctrl+L:** clear the visible output while keeping variables, history, and the current draft.
 - **Reset session:** reset the sandbox and type state while keeping command history.
 
 Syntax highlighting updates as you type. After a short pause, the actual TypeScript compiler

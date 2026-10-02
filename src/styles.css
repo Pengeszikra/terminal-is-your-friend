@@ -37,6 +37,8 @@ button:disabled { cursor: wait; opacity: .5; }
 .has-errors .tok-name { color: #e6bbc1; }
 .entry { display: grid; grid-template-columns: 1.5rem minmax(0, 1fr); gap: .5rem; font-size: 1rem; line-height: 1.65rem; }
 .entry pre { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; }
+.entry-body { min-width: 0; }
+.entry .instructor-code { margin-top: .65rem; padding: .65rem .85rem; border-left: 2px solid #455348; background: #151c17; }
 .entry-marker { user-select: none; color: #6e8474; }
 .entry-command { margin-top: 1.2rem; color: #d6e0d7; }
 .entry-result { color: #a9dfb4; }

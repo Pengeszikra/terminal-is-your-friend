@@ -7,7 +7,7 @@ import { askInstructor, validateQuestion, InstructorError } from "../server/inst
 import { createInstructorHandler } from "../server/instructor-handler.mjs";
 import { instructorQuestion } from "../.compiled/instructor.js";
 
-const payload = sentences => ({ status: "completed", output: [{ type: "message", content: [{ type: "output_text", text: JSON.stringify({ sentences }) }] }] });
+const payload = (sentences, code = "") => ({ status: "completed", output: [{ type: "message", content: [{ type: "output_text", text: JSON.stringify({ sentences, code }) }] }] });
 const options = result => ({ apiKey: "test-secret-not-a-real-key", fetchImpl: async () => Response.json(result) });
 
 test("only standalone single-line comments address the instructor", () => {
@@ -50,6 +50,43 @@ test("reasoning output is excluded from instructor answers", async () => {
     assert.match(answer.answer, /21 \|> twice/);
     assert.doesNotMatch(answer.answer, /Internal reasoning/);
     await assert.rejects(askInstructor({ question: "Explain." }, options({ status: "completed", output: [result.output[0]] })), error => error.status === 502);
+});
+
+test("error explanations receive the complete source, diagnostic and failure phase", async () => {
+    const source = "/*" + "x".repeat(2000) + "*/\nMath.random().toString(36)";
+    for (const phase of ["compile", "runtime"]) {
+        await askInstructor({ kind: "error", source, error: "Reported error", phase }, {
+            apiKey: "test-key", fetchImpl: async (_, init) => {
+                const request = JSON.parse(init.body);
+                assert.deepEqual(JSON.parse(request.input[0].content), { kind: "error", source, error: "Reported error", phase, context: [] });
+                assert.match(request.instructions, /BOTH the complete submitted source/);
+                assert.match(request.instructions, /numbers DO have toString/);
+                return Response.json(payload(["The diagnostic may be misleading.", "Check the supplied source and prior state."], "Math.random().toString(36)"));
+            },
+        });
+    }
+    for (const patch of [{ source: "x".repeat(8193) }, { source: "é".repeat(4097) }, { source: "x\n".repeat(100) }, { error: "x".repeat(16001) }, { error: "" }, { phase: "other" }]) {
+        assert.throws(() => validateQuestion({ kind: "error", source: "42", error: "failure", phase: "runtime", ...patch }), error => error.status === 400);
+    }
+    assert.throws(() => validateQuestion({ kind: "unknown" }), error => error.status === 400);
+});
+
+test("idle introductions have their own task and code stays separate from short prose", async () => {
+    const code = 'const text = "<img src=x onerror=alert(1)>";\ntext |> ((s: string) => s.length)';
+    const answer = await askInstructor({ kind: "welcome" }, {
+        apiKey: "test-key", fetchImpl: async (_, init) => {
+            const request = JSON.parse(init.body);
+            assert.match(request.instructions, /programming experience/);
+            assert.equal(JSON.parse(request.input[0].content).kind, "welcome");
+            assert.deepEqual(request.text.format.schema.required, ["sentences", "code"]);
+            return Response.json(payload(["I am your TS/JS instructor.", "What programming experience do you have?"], code));
+        },
+    });
+    assert.equal(answer.code, code);
+    assert.doesNotMatch(answer.answer, /const text/);
+    for (const invalid of [null, {}, "x".repeat(8193), "x\n".repeat(100)]) {
+        await assert.rejects(askInstructor({ kind: "welcome" }, options(payload(["Hello there.", "Try some code."], invalid))), error => error.status === 502);
+    }
 });
 
 test("instructor caps sentences and reports refusals without executing output", async () => {

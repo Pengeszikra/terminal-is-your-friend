@@ -16,9 +16,27 @@ try {
     const failures = [];
     page.on("pageerror", error => failures.push(error.message));
     const base = `http://127.0.0.1:${app.address().port}`;
+    // Coded by OpenAI Codex. Mock the instructor endpoint; code still uses the real compiler.
+    const requests = [];
+    const questions = [];
+    let releaseReply;
+    let delayReply = false;
+    let instructorFails = false;
+    await page.route("**/api/instructor", async route => {
+        const request = route.request().postDataJSON();
+        requests.push(request);
+        if (request.kind === "question") questions.push(request);
+        if (delayReply) await new Promise(resolve => { releaseReply = resolve; });
+        await route.fulfill({ status: instructorFails ? 503 : 200, contentType: "application/json", body: JSON.stringify(instructorFails
+            ? { ok: false, error: "The instructor is not configured yet." }
+            : { ok: true, answer: "The pipeline passes the left value to the function on the right. The result here is 42, and <img src=x> is plain text.", code: 'const example = "<img src=x>";\n21 |> ((n: number) => n * 2)' }) });
+    });
     await page.goto(base);
     const input = page.locator("#input");
     await page.waitForFunction(() => !document.querySelector("#input").disabled);
+
+    assert.equal(await page.locator("#output").innerText(), "");
+    assert.match(await page.locator("h1").innerText(), /^\|>/);
 
     // Coded by OpenAI Codex.
     const run = async source => {
@@ -54,17 +72,13 @@ try {
     await input.press("Enter");
     await page.waitForFunction(() => !document.querySelector("#input").readOnly);
     assert.match(await page.locator(".entry-error").last().innerText(), /not assignable/);
+    await page.locator(".entry-answer").first().waitFor();
+    assert.equal(requests.at(-1).kind, "error");
+    assert.equal(requests.at(-1).phase, "compile");
+    assert.equal(requests.at(-1).source, '"oops" |> twice');
+    assert.match(requests.at(-1).error, /not assignable/);
     assert.match(await run("answer"), /40/);
 
-    // Coded by OpenAI Codex. Mock the instructor endpoint; code still uses the real compiler.
-    const questions = [];
-    let instructorFails = false;
-    await page.route("**/api/instructor", async route => {
-        questions.push(route.request().postDataJSON());
-        await route.fulfill({ status: instructorFails ? 503 : 200, contentType: "application/json", body: JSON.stringify(instructorFails
-            ? { ok: false, error: "The instructor is not configured yet." }
-            : { ok: true, answer: "The pipeline passes the left value to the function on the right. The result here is 42, and <img src=x> is plain text." }) });
-    });
     assert.equal(questions.length, 0);
     const commandCount = await page.locator(".entry-command").count();
     await input.fill("// Why did my code fail?");
@@ -79,6 +93,8 @@ try {
     assert.equal(await page.locator(".entry-command").count(), commandCount);
     assert.match(await page.locator(".entry-answer").last().innerText(), /pipeline/);
     assert.equal(await page.locator("#output img").count(), 0);
+    assert.ok(await page.locator(".entry-answer .instructor-code .tok-keyword").count() > 0);
+    assert.match(await page.locator(".entry-answer .instructor-code").last().innerText(), /const example/);
     await input.press("ArrowUp");
     assert.equal(await input.inputValue(), "// Why did my code fail?");
     await run("// This is a normal code comment\nanswer + 2");
@@ -90,6 +106,23 @@ try {
     await run("answer");
     assert.equal(await page.locator(".entry-result").last().innerText(), "←\n40");
     instructorFails = false;
+
+    // Coded by OpenAI Codex. Clear cancels delayed AI output, without changing the draft or variables.
+    delayReply = true;
+    await input.fill("// Show me an example.");
+    await input.press("Enter");
+    while (!releaseReply) await new Promise(resolve => setTimeout(resolve, 10));
+    await page.keyboard.press("Control+l");
+    releaseReply();
+    delayReply = false;
+    await page.waitForFunction(() => !document.querySelector("#input").readOnly);
+    assert.equal(await page.locator("#output").innerText(), "");
+    await input.fill("answer + 2");
+    await page.keyboard.press("Control+l");
+    assert.equal(await input.inputValue(), "answer + 2");
+    await input.press("Enter");
+    await page.waitForFunction(() => !document.querySelector("#input").readOnly);
+    assert.equal(await page.locator(".entry-result").last().innerText(), "←\n42");
 
     // Coded by OpenAI Codex. Type-check bypass still cannot expose browser globals.
     assert.match(await run('(globalThis as any).window'), /undefined/);
@@ -107,6 +140,13 @@ try {
     assert.equal(await input.inputValue(), "42");
     assert.match(await page.locator("#status").innerText(), /Paste rejected/);
 
+    const longSource = "/*" + "x".repeat(2000) + '*/\nthrow new Error("example runtime failure")';
+    const previousAnswers = await page.locator(".entry-answer").count();
+    await run(longSource);
+    await page.waitForFunction(count => document.querySelectorAll(".entry-answer").length > count, previousAnswers);
+    assert.equal(requests.at(-1).source, longSource);
+    assert.equal(requests.at(-1).phase, "runtime");
+    assert.match(requests.at(-1).error, /example runtime failure/);
     assert.match(await run("while (true) {}"), /time limit/);
     assert.match(await run("21 |> ((n: number) => n * 2)"), /42/);
     assert.match(await run("answer"), /Cannot find name/);
@@ -119,12 +159,43 @@ try {
     await run("[1, 2, 3] |> ((values: number[]) => values.map(double))");
     await run("21 |> double");
     await mkdir("test-results", { recursive: true });
+    await run("// Explain this pipeline.");
     await page.screenshot({ path: "test-results/terminal-desktop.png" });
     await page.setViewportSize({ width: 390, height: 844 });
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
     await page.screenshot({ path: "test-results/terminal-mobile.png" });
     assert.deepEqual(failures, []);
-    console.log("Browser checks passed: pipeline, state, Shift+Enter, history, diagnostics, isolation, instructor routing/context/errors (mock API), HTML escaping, timeout recovery, desktop and mobile.");
+
+    // Coded by OpenAI Codex. Virtual time verifies the empty start, activity reset, draft guard and one-shot greeting.
+    const idlePage = await browser.newPage();
+    let introductions = 0;
+    await idlePage.clock.install({ time: new Date("2026-10-03T00:00:00Z") });
+    await idlePage.clock.pauseAt(new Date("2026-10-03T00:00:01Z"));
+    await idlePage.route("**/api/instructor", async route => {
+        const request = route.request().postDataJSON();
+        assert.equal(request.kind, "welcome");
+        introductions++;
+        await route.fulfill({ json: { ok: true, answer: "I am your TS/JS instructor and terminal. What programming experience do you have?", code: "" } });
+    });
+    await idlePage.goto(base);
+    await idlePage.locator("#input:not([disabled])").waitFor();
+    assert.equal(await idlePage.locator("#output").innerText(), "");
+    await idlePage.clock.fastForward(9000);
+    assert.equal(introductions, 0);
+    await idlePage.locator("#input").press("ArrowLeft");
+    await idlePage.clock.fastForward(9000);
+    assert.equal(introductions, 0);
+    await idlePage.locator("#input").fill("42");
+    await idlePage.clock.fastForward(11000);
+    assert.equal(introductions, 0);
+    await idlePage.locator("#input").fill("");
+    await idlePage.clock.fastForward(10000);
+    await idlePage.locator(".entry-answer").waitFor();
+    assert.equal(introductions, 1);
+    await idlePage.clock.fastForward(30000);
+    assert.equal(introductions, 1);
+    await idlePage.close();
+    console.log("Browser checks passed: empty start, 10-second idle introduction, pipeline, state, Shift+Enter, history, diagnostics, automatic error explanations with full source, highlighted AI code, Ctrl+L, stale-reply cancellation, isolation, HTML escaping, timeout recovery, desktop and mobile (mock AI API).");
 } finally {
     await browser.close();
     await new Promise(resolve => app.close(resolve));
