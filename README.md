@@ -1,17 +1,19 @@
 <!-- Written and coded by OpenAI Codex. -->
 # Terminal Is Your Friend
 
-Egy egyszerű, sötét webes terminál a JavaScript és TypeScript alapjainak kipróbálására,
-Péter Vívó típusbiztos pipeline-operátoros TypeScript forkjával.
-A felület Tailwind CSS-t használ. Ebben az első változatban nincs AI-integráció.
-A későbbi cél egy AI-oktatóval támogatott JS/TS tanulókörnyezet.
+A small, dark web terminal for exploring JavaScript and TypeScript fundamentals,
+powered by Peter Vivo's type-safe pipeline-operator TypeScript fork.
+The interface uses Tailwind CSS. This first version has no AI integration.
+The longer-term goal is a JS/TS learning environment with an AI tutor.
 
-## Indítás
+All project documentation, interface text, messages, comments, and examples are written in English.
 
-Node.js **22.18 vagy újabb** szükséges. A Go fordítót nem kell telepíteni:
-az npm-csomag tartalmazza az adott platform natív pipeline-fordítóját.
+## Getting started
 
-A GitHub-repóból:
+Requires **Node.js 22.18 or later**. You do not need to install Go:
+the npm package includes the native pipeline compiler for your platform.
+
+Clone the GitHub repository:
 
 ```sh
 : 'Commands by OpenAI Codex.'
@@ -21,121 +23,121 @@ npm ci
 npm start
 ```
 
-Nyisd meg: **http://localhost:5173**. Leállítás: Ctrl+C.
-Más port: `PORT=5174 npm start`.
+Open **http://localhost:5173**. Stop the server with Ctrl+C.
+To use another port in a POSIX shell: `PORT=5174 npm start`.
 
-A projekt rögzítetten a `@pengeszikra/typescript@7.1.0-pipeline.1` csomagot használja.
-Az optional dependencies telepítését ne tiltsd le, mert ezekben vannak a platformonkénti fordítók.
-A build is ezzel a forkkal készül: az alkalmazás saját TS-forrásában is van `|>`.
-Az esbuild csak az elkészült JavaScriptet csomagolja össze.
+The project pins `@pengeszikra/typescript@7.1.0-pipeline.1`.
+Keep optional dependencies enabled during installation: they contain the platform-specific compilers.
+The application itself is also compiled with this fork, and its TypeScript source uses `|>`.
+Esbuild only bundles the emitted JavaScript.
 
-Ha a saját helyi fordítóddal próbálnád:
+To try your own local compiler in a POSIX shell:
 
 ```sh
 : 'Commands by OpenAI Codex.'
 TS_PIPE_COMPILER="$HOME/repo/Typescript/built/local/tsc" npm start
 ```
 
-A bináris mellett legyenek meg a fork `lib.*.d.ts` fájljai.
-Az `npm start` buildel, majd elindítja a szervert. Forrásmódosítás után indítsd újra.
-Egy korábban elkészített buildet az `npm run preview` új fordítás nélkül indít el.
-A generált `dist/` és `.compiled/` könyvtárak nem részei a repónak.
+Keep the fork's `lib.*.d.ts` files alongside the executable.
+`npm start` builds the application and starts the server. Restart it after changing the source.
+`npm run preview` serves an existing build without rebuilding it.
+The generated `dist/` and `.compiled/` directories are not committed to the repository.
 
-## Használat
+## Usage
 
-- **Enter:** a teljes aktuális blokk ellenőrzése, fordítása és futtatása.
-- **Shift+Enter:** új sor, futtatás nélkül.
-- **↑ / ↓:** előző és következő beküldés, amikor a kurzor az első/utolsó sorban áll.
-- **Alt+↑ / Alt+↓:** előzményléptetés a többsoros blokk bármely sorából.
-- **Tab:** két szóköz.
-- **Clear:** a látható kimenet törlése; a változók megmaradnak.
-- **Reset session:** a sandbox és a típusállapot újraindítása; az előzmény megmarad.
+- **Enter:** type-check, compile, and run the entire current input block.
+- **Shift+Enter:** insert a new line without running the code.
+- **↑ / ↓:** recall the previous or next submission when the cursor is on the first or last line.
+- **Alt+↑ / Alt+↓:** navigate history from any line of a multiline block.
+- **Tab:** insert two spaces.
+- **Clear:** clear the visible output while keeping variables.
+- **Reset session:** reset the sandbox and type state while keeping command history.
 
-A gépelés közben a kód folyamatosan színezett. Rövid szünet után a valódi TS-fordító
-ellenőriz, hiba esetén a színek vörös árnyalatúak lesznek. A hiba szövege csak Enter után jelenik meg.
-Az éppen futó kód befejezéséig a szerkesztő vár; az oldal nem fagy le.
-A munkamenet csak a lap élettartamáig él, nincs helyi vagy szerveroldali mentés.
-Az önálló `//` megjegyzés jelenleg normál kódmegjegyzés, mert AI még nincs bekötve.
+Syntax highlighting updates as you type. After a short pause, the actual TypeScript compiler
+checks the input; errors change the highlighting to shades of red. Diagnostic text appears only after Enter.
+The editor waits for running code to finish, while the page remains responsive.
+The session lasts only for the lifetime of the page; it is not saved locally or on the server.
+A standalone `//` comment is treated as an ordinary code comment because AI is not connected yet.
 
-Példa első beküldés:
+First submission:
 
 ```ts
 // Coded by OpenAI Codex.
 const double = (n: number) => n * 2;
 ```
 
-Következő beküldés:
+Next submission:
 
 ```ts
 // Coded by OpenAI Codex.
 21 |> double
 ```
 
-Eredmény: `42`. A korábbi `double` típusa is megmarad, ezért a `"hello" |> double`
-fordítási hibát ad. A már végrehajtott kódot a terminál **nem futtatja újra**.
-A `const`/`let` azonos nevű újradeklarálása hibás; módosítható értékhez `let` és értékadás használható.
+Result: `42`. The type of `double` is preserved, so `"hello" |> double`
+produces a compilation error. Previously executed code is **not run again**.
+Redeclaring the same `const` or `let` name is an error; use `let` and assignment for mutable values.
 
-Lánc típusváltással:
+A pipeline that changes types:
 
 ```ts
 // Coded by OpenAI Codex.
 [1, 2, 3]
   |> ((values: number[]) => values.map(double))
   |> ((values: number[]) => values.reduce((sum, value) => sum + value, 0))
-  |> ((total: number) => `Összesen: ${total}`)
+  |> ((total: number) => `Total: ${total}`)
 ```
 
-## Futási környezet és határok
+## Runtime and boundaries
 
-1. A böngésző a forrást a helyi Node-szervernek küldi.
-2. A szerver a natív TS-forkkal típusellenőriz és fordít. **Felhasználói JS-t nem futtat.**
-3. Csak az új beküldés JavaScriptje kerül egy Web Workerben működő QuickJS WebAssembly virtuális gépbe.
-4. A vendég VM a saját JavaScript-beépített objektumait és egy szűk `console` hidat kapja.
+1. The browser sends source code to the local Node server.
+2. The server type-checks and compiles it with the native TypeScript fork. **It does not execute user JavaScript.**
+3. Only the new submission's JavaScript is passed to a QuickJS WebAssembly virtual machine running in a Web Worker.
+4. The guest VM receives its own JavaScript built-ins and a narrow `console` bridge.
 
-A vendég számára nincs `window`, DOM, `document`, `fetch`, `WebSocket`, `Worker`,
-`localStorage`, cookie, Node `process`, `require` vagy fájlrendszer. A vendég `globalThis`
-és `Function` objektumai is a QuickJS környezethez tartoznak.
-Nem használunk böngészős `eval`-t, `new Function`-t vagy Node `vm`-et sandboxként.
-Nincs modulbetöltő, import/export, timer vagy top-level await támogatás.
-Ez az első terminál szinkron TS/JS-kísérletekre készült; nincs DOM/JSX-renderelés.
+The guest has no access to `window`, the DOM, `document`, `fetch`, `WebSocket`, `Worker`,
+`localStorage`, cookies, Node's `process`, `require`, or the filesystem. Its `globalThis`
+and `Function` objects also belong to the QuickJS environment.
+Browser `eval`, browser `new Function`, and Node's `vm` are not used as a sandbox.
+There is no module loader, import/export support, timers, or top-level await.
+This first version is intended for synchronous TS/JS experiments; it does not render DOM or JSX.
 
-A saját `console` a `log`, `info`, `warn`, `error`, `clear` műveleteket támogatja.
-A kimenet szövegként jelenik meg; HTML-t nem illesztünk be belőle.
-Az objektumkiírás korlátozott mélységű, kezeli a körhivatkozást, és nem hívja meg a gettereket.
+The custom `console` supports `log`, `info`, `warn`, `error`, and `clear`.
+Output is rendered as text, never inserted as HTML.
+Object formatting has a depth limit, handles circular references, and does not invoke getters.
 
-Korlátok:
+Limits:
 
-- Beküldésenként 100 sor / 8 KB; a túl nagy beillesztést egészben elutasítjuk.
-- Munkamenetenként 50 sikeres beküldés és összesen 100 KB forrás.
-- QuickJS futási idő 2 másodperc; a böngésző 3 másodperc után a teljes workert is leállíthatja.
-- QuickJS heap limit 32 MiB; ez nem a teljes böngészőfolyamat memóriahatára.
-- Beküldésenként korlátozott konzolkimenet és microtask-feldolgozás.
-- A fordítás 10 másodperc után megszakad; egyszerre legfeljebb két fordítás futhat.
+- 100 lines / 8 KB per submission; oversized pastes are rejected in full.
+- 50 successful submissions and 100 KB of total source per session.
+- A 2-second QuickJS execution limit; the browser can also terminate the entire worker after 3 seconds.
+- A 32 MiB QuickJS heap limit; this is not a memory limit for the entire browser process.
+- Bounded console output and microtask processing per submission.
+- A 10-second compilation timeout, with at most two compilations running at once.
 
-**Fordítási hiba nem törli a változókat. Futási hiba, időtúllépés vagy memóriahiba viszont
-újraindítja a sandboxot**, mert egy részben lefutott program állapota már eltérhet a TS előzményeitől.
-Erről üzenet jelenik meg. A parancselőzményből a kód visszahívható, automatikus újrafuttatás nincs.
-A Promise-alapú aszinkron programozás nem célja ennek a verziónak; az összes el nem kapott
-Promise-rejection jelentése még nem teljes.
+**Compilation errors preserve variables. Runtime errors, timeouts, and memory errors reset the sandbox**
+because partially executed code may leave its state inconsistent with the TypeScript history.
+A message explains the reset. Code can be recalled from command history, but is never rerun automatically.
+Promise-based asynchronous programming is outside the scope of this version;
+reporting of all unhandled Promise rejections is not yet complete.
 
-A HTTP-szerver alapértelmezésben kizárólag `127.0.0.1` címen figyel, ellenőrzi a Host és Origin
-fejléceket, és nem enged CORS-hozzáférést. Csak a kész build fájljait szolgálja ki.
-A CSP további korlát, a vendég kód izolációját maga a külön QuickJS motor adja.
-Ez tesztelt POC, nem formálisan auditált biztonsági környezet. Nyilvános szolgáltatáshoz a
-fordítószerver további erőforrás-korlátozást, forgalmi limitet és üzemeltetési védelmet igényel.
+The HTTP server listens only on `127.0.0.1` by default, validates Host and Origin headers,
+and does not allow cross-origin access through CORS. It serves only built application assets.
+CSP adds another restriction; the separate QuickJS engine provides guest-code isolation.
+This is a tested proof of concept, not a formally audited security environment. A public deployment
+would require additional compiler-server resource limits, rate limiting, and operational safeguards.
 
-## Tesztek
+## Tests
 
 ```sh
 : 'Commands by OpenAI Codex.'
 npm test
 ```
 
-A valódi forkkal és QuickJS-sel ellenőrzi a pipeline-láncot, az előzmények típusait, az egyszeri
-végrehajtást, a fordítási/futási hibákat, az idő- és memóriahatárt, a tiltott környezeti
-hozzáféréseket és a helyi HTTP API-t.
+Tests use the actual fork and QuickJS to check pipeline chains, persistent types,
+execution without replay, compilation and runtime errors, time and memory limits,
+unavailable host capabilities, and the local HTTP API.
 
-Opcionális böngészős ellenőrzés:
+Optional browser checks:
 
 ```sh
 : 'Commands by OpenAI Codex.'
@@ -143,22 +145,22 @@ npx playwright install chromium
 npm run test:browser
 ```
 
-Ez billentyűzetes és mobilnézetes ellenőrzést is futtat, a képeket a `test-results/` mappába menti.
-Saját Chromium binárishoz a `CHROMIUM_PATH` változó használható.
+These also check keyboard interactions and the mobile viewport, saving screenshots to `test-results/`.
+Set `CHROMIUM_PATH` to use a custom Chromium executable.
 
-## Források
+## Source layout
 
-- `src/main.ts`: terminál, bevitel, előzmények, fordítás és háttérellenőrzés.
-- `src/highlight.ts`: egyszerű, biztonságos szintaxisszínezés.
-- `src/sandbox.ts`: QuickJS és erőforráskorlátok.
-- `src/worker.ts`: a böngésző és a sandbox közötti üzenetek.
-- `server/compiler.mjs`: típusállapot és natív fordítás.
-- `server/index.mjs`: helyi HTTP API és statikus kiszolgálás.
+- `src/main.ts`: terminal UI, input, history, compilation, and background type-checking.
+- `src/highlight.ts`: simple, safe syntax highlighting.
+- `src/sandbox.ts`: QuickJS integration and resource limits.
+- `src/worker.ts`: messages between the browser and the sandbox.
+- `server/compiler.mjs`: type state and native compilation.
+- `server/index.mjs`: local HTTP API and static asset serving.
 - `scripts/build.mjs`: fork → JavaScript → bundle + Tailwind.
 
 Fork: https://github.com/Pengeszikra/TypeScript
 
 QuickJS wrapper: https://github.com/justjake/quickjs-emscripten
 
-A saját források megjegyzésben jelölik az OpenAI Codex közreműködését.
-A külső függőségekre saját licenceik vonatkoznak.
+Comments in the project's own source files acknowledge OpenAI Codex's contribution.
+Third-party dependencies retain their respective licenses.
