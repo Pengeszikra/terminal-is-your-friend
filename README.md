@@ -43,6 +43,31 @@ Keep the fork's `lib.*.d.ts` files alongside the executable.
 `npm run preview` serves an existing build without rebuilding it.
 The generated `dist/` and `.compiled/` directories are not committed to the repository.
 
+## Deploying to Vercel
+
+Import this repository with the repository root as the Root Directory. The committed
+`vercel.json` selects the **Other** framework preset, runs `npm run build`, and sets the
+Output Directory to **`dist`**. It overrides the default `public` output directory.
+
+The deployment has two parts:
+
+- Static assets from `dist/`, including the worker, WebAssembly module, and favicon.
+- Node.js Functions at `/api/compile` and `/api/check`, using the same native TypeScript fork as the local server.
+
+The function configuration explicitly includes the fork's npm packages, native executable,
+and declaration files. Keep optional dependencies enabled. Compilation uses temporary files
+and a 10-second compiler timeout; each function has a 15-second maximum duration.
+Submitted JavaScript still runs only inside the browser's QuickJS sandbox.
+
+After pulling these changes, deploy the latest commit. No start command or persistent
+Node server is needed on Vercel. Preview domains and custom HTTPS domains are supported.
+The local `npm start` workflow continues to use `http://localhost:5173`.
+
+Requests must come from the same origin and use JSON. Input limits and a per-instance
+concurrency cap apply, but they are not authentication or a deployment-wide rate limit.
+For a private preview, enable Vercel Deployment Protection; for a public service,
+configure platform-level rate limiting to control compiler usage.
+
 ## Usage
 
 - **Enter:** type-check, compile, and run the entire current input block.
@@ -89,7 +114,7 @@ A pipeline that changes types:
 
 ## Runtime and boundaries
 
-1. The browser sends source code to the local Node server.
+1. The browser sends source code to the Node compiler API, served locally or by a Vercel Function.
 2. The server type-checks and compiles it with the native TypeScript fork. **It does not execute user JavaScript.**
 3. Only the new submission's JavaScript is passed to a QuickJS WebAssembly virtual machine running in a Web Worker.
 4. The guest VM receives its own JavaScript built-ins and a narrow `console` bridge.
@@ -135,7 +160,7 @@ npm test
 
 Tests use the actual fork and QuickJS to check pipeline chains, persistent types,
 execution without replay, compilation and runtime errors, time and memory limits,
-unavailable host capabilities, and the local HTTP API.
+unavailable host capabilities, the local HTTP API, and the Vercel function request contract.
 
 Optional browser checks:
 
@@ -156,6 +181,9 @@ Set `CHROMIUM_PATH` to use a custom Chromium executable.
 - `src/worker.ts`: messages between the browser and the sandbox.
 - `server/compiler.mjs`: type state and native compilation.
 - `server/index.mjs`: local HTTP API and static asset serving.
+- `server/vercel-handler.mjs`: HTTPS function adapter with request validation and limits.
+- `api/compile.js`, `api/check.js`: Vercel function entry points.
+- `vercel.json`: build output, native compiler packaging, and deployment headers.
 - `scripts/build.mjs`: fork → JavaScript → bundle + Tailwind.
 
 Fork: https://github.com/Pengeszikra/TypeScript
