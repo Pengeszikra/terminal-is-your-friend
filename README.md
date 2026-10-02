@@ -3,7 +3,8 @@
 
 A small, dark web terminal for exploring JavaScript and TypeScript fundamentals,
 powered by Peter Vivo's type-safe pipeline-operator TypeScript fork.
-The interface uses Tailwind CSS. An AI instructor answers explicit questions in
+The interface uses Tailwind CSS. An AI instructor powered by the open-weight
+**gpt-oss-120b** model through Groq answers explicit questions in
 2–4 short English sentences, using recent terminal activity as context.
 
 All project documentation, interface text, messages, comments, and examples are written in English.
@@ -45,12 +46,21 @@ The generated `dist/` and `.compiled/` directories are not committed to the repo
 
 ## AI instructor setup
 
-Set **`OPENAI_API_KEY`** on the server. The default model is **`gpt-4.1-mini`**;
-`OPENAI_MODEL` can select another model that supports the Responses API and Structured Outputs.
+Create an API key at [Groq Console](https://console.groq.com/keys) and set
+**`GROQ_API_KEY`** on the server. The instructor uses **`openai/gpt-oss-120b`**
+through [Groq's Responses API](https://console.groq.com/docs/responses-api).
+The model is pinned in the server code; no model environment variable is needed.
 
-For Vercel, open **Project Settings → Environment Variables**, add `OPENAI_API_KEY`
+[gpt-oss-120b](https://huggingface.co/openai/gpt-oss-120b) has open weights released
+under Apache 2.0. Inference runs on Groq's hosted service, not in the browser or
+locally. This deployment requires an internet connection and a Groq account.
+
+For Vercel, open **Project Settings → Environment Variables**, add `GROQ_API_KEY`
 for the deployment environments you use, then deploy the latest commit again.
 Do not add a client-side prefix to the variable or put the key in source code.
+When upgrading from the previous OpenAI integration, remove the unused
+`OPENAI_API_KEY` and `OPENAI_MODEL` variables. An OpenAI key cannot authenticate
+with Groq; the application does not fall back to the previous provider or model.
 
 Locally, copy `.env.example` to `.env`, fill in the key, and run `npm start`.
 The server loads `.env`; Git ignores it. Code execution still works without an API key,
@@ -69,14 +79,16 @@ at four sentences. Replies appear as plain text with an `AI` marker and are neve
 Comments inside multiline code remain ordinary TypeScript comments. AI questions do not
 change variables, consume compilation history slots, or trigger background type-checking.
 
-Only submitting a question calls OpenAI. The question and up to 12 recent terminal entries
+Only submitting a question calls Groq. The question and up to 12 recent terminal entries
 (at most 1,200 characters each) are sent as context, including code, results, errors, and
 previous questions and answers. This is a partial transcript, not the full runtime state.
 `Reset session` clears that context; `Clear` only clears visible output.
-The Responses API request uses `store: false`; OpenAI's API data policies still apply.
+The Responses API request uses `store: false`; Groq's data policies still apply.
 There are no unsolicited hints, automatic error explanations, tools, or code execution by the AI.
 
-Each call has a 20-second timeout and a 600-output-token budget. The instructor endpoint
+Each call has a 20-second timeout, low reasoning effort, and a 2,048-output-token
+budget that includes reasoning. Only the final answer is displayed; reasoning
+output is excluded and the four-sentence cap still applies. The instructor endpoint
 allows at most two concurrent requests per function instance; this is not a global rate limit.
 For a public deployment, use platform rate limiting and API project spending controls.
 API credentials stay server-side and provider errors are sanitized before display.
@@ -91,7 +103,7 @@ The deployment has two parts:
 
 - Static assets from `dist/`, including the worker, WebAssembly module, and favicon.
 - Node.js Functions at `/api/compile` and `/api/check`, using the same native TypeScript fork as the local server.
-- A Node.js Function at `/api/instructor`, calling OpenAI with the server-side API key.
+- A Node.js Function at `/api/instructor`, calling gpt-oss-120b on Groq with the server-side API key.
 
 The function configuration explicitly includes the fork's npm packages, native executable,
 and declaration files. Keep optional dependencies enabled. Compilation uses temporary files
@@ -224,7 +236,7 @@ Set `CHROMIUM_PATH` to use a custom Chromium executable.
 - `server/index.mjs`: local HTTP API and static asset serving.
 - `server/vercel-handler.mjs`: HTTPS function adapter with request validation and limits.
 - `api/compile.js`, `api/check.js`: Vercel function entry points.
-- `server/instructor.mjs`: OpenAI request, bounded context, and short-answer handling.
+- `server/instructor.mjs`: Groq request for gpt-oss-120b, bounded context, and short-answer handling.
 - `server/instructor-handler.mjs`, `api/instructor.js`: local and Vercel instructor endpoint.
 - `vercel.json`: build output, native compiler packaging, and deployment headers.
 - `scripts/build.mjs`: fork → JavaScript → bundle + Tailwind.

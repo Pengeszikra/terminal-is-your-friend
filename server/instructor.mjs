@@ -35,18 +35,20 @@ function shortAnswer(text) {
     return answer;
 }
 
-export async function askInstructor(body, { signal, fetchImpl = fetch, apiKey = process.env.OPENAI_API_KEY, model = process.env.OPENAI_MODEL || "gpt-4.1-mini" } = {}) {
+export async function askInstructor(body, { signal, fetchImpl = fetch, apiKey = process.env.GROQ_API_KEY } = {}) {
     const input = validateQuestion(body);
-    if (!apiKey?.trim()) throw new InstructorError(503, "The instructor is not configured yet. Set OPENAI_API_KEY on the server.");
+    if (!apiKey?.trim()) throw new InstructorError(503, "The instructor is not configured yet. Set GROQ_API_KEY on the server.");
     const timeout = AbortSignal.timeout(20_000);
     const requestSignal = signal ? AbortSignal.any([signal, timeout]) : timeout;
     try {
-        const response = await fetchImpl("https://api.openai.com/v1/responses", {
+        const response = await fetchImpl("https://api.groq.com/openai/v1/responses", {
             method: "POST",
             headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
             signal: requestSignal,
             body: JSON.stringify({
-                model, instructions, store: false, max_output_tokens: 600,
+                // The output budget includes reasoning; the displayed answer stays short.
+                model: "openai/gpt-oss-120b", instructions, store: false, max_output_tokens: 2048,
+                reasoning: { effort: "low" },
                 input: [{ role: "user", content: JSON.stringify(input) }],
                 text: { format: {
                     type: "json_schema", name: "instructor_answer", strict: true,
