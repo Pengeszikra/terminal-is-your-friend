@@ -3,8 +3,8 @@
 
 A small, dark web terminal for exploring JavaScript and TypeScript fundamentals,
 powered by Peter Vivo's type-safe pipeline-operator TypeScript fork.
-The interface uses Tailwind CSS. This first version has no AI integration.
-The longer-term goal is a JS/TS learning environment with an AI tutor.
+The interface uses Tailwind CSS. An AI instructor answers explicit questions in
+2–4 short English sentences, using recent terminal activity as context.
 
 All project documentation, interface text, messages, comments, and examples are written in English.
 
@@ -43,6 +43,44 @@ Keep the fork's `lib.*.d.ts` files alongside the executable.
 `npm run preview` serves an existing build without rebuilding it.
 The generated `dist/` and `.compiled/` directories are not committed to the repository.
 
+## AI instructor setup
+
+Set **`OPENAI_API_KEY`** on the server. The default model is **`gpt-4.1-mini`**;
+`OPENAI_MODEL` can select another model that supports the Responses API and Structured Outputs.
+
+For Vercel, open **Project Settings → Environment Variables**, add `OPENAI_API_KEY`
+for the deployment environments you use, then deploy the latest commit again.
+Do not add a client-side prefix to the variable or put the key in source code.
+
+Locally, copy `.env.example` to `.env`, fill in the key, and run `npm start`.
+The server loads `.env`; Git ignores it. Code execution still works without an API key,
+and asking a question shows a clear setup message until the key is configured.
+
+Submit a standalone single-line question with `//`:
+
+```text
+// Why did my last expression fail?
+// What does the pipeline operator do?
+```
+
+The instructor answers questions on any topic, with no programming-only restriction.
+The response schema requests 2–4 sentence items, and the server caps the displayed answer
+at four sentences. Replies appear as plain text with an `AI` marker and are never executed.
+Comments inside multiline code remain ordinary TypeScript comments. AI questions do not
+change variables, consume compilation history slots, or trigger background type-checking.
+
+Only submitting a question calls OpenAI. The question and up to 12 recent terminal entries
+(at most 1,200 characters each) are sent as context, including code, results, errors, and
+previous questions and answers. This is a partial transcript, not the full runtime state.
+`Reset session` clears that context; `Clear` only clears visible output.
+The Responses API request uses `store: false`; OpenAI's API data policies still apply.
+There are no unsolicited hints, automatic error explanations, tools, or code execution by the AI.
+
+Each call has a 20-second timeout and a 600-output-token budget. The instructor endpoint
+allows at most two concurrent requests per function instance; this is not a global rate limit.
+For a public deployment, use platform rate limiting and API project spending controls.
+API credentials stay server-side and provider errors are sanitized before display.
+
 ## Deploying to Vercel
 
 Import this repository with the repository root as the Root Directory. The committed
@@ -53,10 +91,12 @@ The deployment has two parts:
 
 - Static assets from `dist/`, including the worker, WebAssembly module, and favicon.
 - Node.js Functions at `/api/compile` and `/api/check`, using the same native TypeScript fork as the local server.
+- A Node.js Function at `/api/instructor`, calling OpenAI with the server-side API key.
 
 The function configuration explicitly includes the fork's npm packages, native executable,
 and declaration files. Keep optional dependencies enabled. Compilation uses temporary files
-and a 10-second compiler timeout; each function has a 15-second maximum duration.
+and a 10-second compiler timeout; compiler functions have a 15-second maximum duration.
+The instructor function has a 30-second maximum duration and does not package the compiler.
 Submitted JavaScript still runs only inside the browser's QuickJS sandbox.
 
 After pulling these changes, deploy the latest commit. No start command or persistent
@@ -82,7 +122,7 @@ Syntax highlighting updates as you type. After a short pause, the actual TypeScr
 checks the input; errors change the highlighting to shades of red. Diagnostic text appears only after Enter.
 The editor waits for running code to finish, while the page remains responsive.
 The session lasts only for the lifetime of the page; it is not saved locally or on the server.
-A standalone `//` comment is treated as an ordinary code comment because AI is not connected yet.
+A standalone single-line `//` question addresses the instructor; multiline code comments remain ordinary comments.
 
 First submission:
 
@@ -177,12 +217,15 @@ Set `CHROMIUM_PATH` to use a custom Chromium executable.
 
 - `src/main.ts`: terminal UI, input, history, compilation, and background type-checking.
 - `src/highlight.ts`: simple, safe syntax highlighting.
+- `src/instructor.ts`: standalone question detection.
 - `src/sandbox.ts`: QuickJS integration and resource limits.
 - `src/worker.ts`: messages between the browser and the sandbox.
 - `server/compiler.mjs`: type state and native compilation.
 - `server/index.mjs`: local HTTP API and static asset serving.
 - `server/vercel-handler.mjs`: HTTPS function adapter with request validation and limits.
 - `api/compile.js`, `api/check.js`: Vercel function entry points.
+- `server/instructor.mjs`: OpenAI request, bounded context, and short-answer handling.
+- `server/instructor-handler.mjs`, `api/instructor.js`: local and Vercel instructor endpoint.
 - `vercel.json`: build output, native compiler packaging, and deployment headers.
 - `scripts/build.mjs`: fork → JavaScript → bundle + Tailwind.
 

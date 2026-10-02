@@ -9,9 +9,9 @@
   },
   "scripts": {
     "build": "node scripts/build.mjs",
-    "start": "npm run build && node server/index.mjs",
+    "start": "npm run build && node --env-file-if-exists=.env server/index.mjs",
     "dev": "npm start",
-    "preview": "node server/index.mjs",
+    "preview": "node --env-file-if-exists=.env server/index.mjs",
     "test": "npm run build && node --test tests/*.test.mjs",
     "test:browser": "npm run build && node scripts/test-browser.mjs"
   },

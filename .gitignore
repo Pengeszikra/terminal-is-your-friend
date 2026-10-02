@@ -3,6 +3,8 @@ node_modules/
 dist/
 .compiled/
 .env
+.env.*
+!.env.example
 *.log
 test-results/
 .vercel/

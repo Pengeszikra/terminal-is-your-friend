@@ -1,5 +1,6 @@
 // Coded by OpenAI Codex. UI and submitted snippets both use the pipeline TypeScript fork.
 import { highlight } from "./highlight.js";
+import { instructorQuestion } from "./instructor.js";
 import type { Evaluation, Output } from "./sandbox.js";
 
 const input = document.querySelector<HTMLTextAreaElement>("#input")!;
@@ -22,11 +23,14 @@ let watchdog = 0;
 let requestId = 0;
 let checkController: AbortController | undefined;
 let pending: { id: number; source: string } | undefined;
+let instructorContext: { kind: string; text: string }[] = [];
 
 // Coded by OpenAI Codex.
 const scroll = () => { terminal.scrollTop = terminal.scrollHeight; };
 const label = (text: string) => { status.textContent = text; };
 const append = (kind: string, text: string, marker = "") => {
+    instructorContext.push({ kind, text: text.slice(0, 1200) });
+    if (instructorContext.length > 12) instructorContext.shift();
     const row = document.createElement("div");
     row.className = `entry entry-${kind}`;
     const prefix = document.createElement("span");
@@ -46,6 +50,7 @@ const append = (kind: string, text: string, marker = "") => {
 const welcome = () => {
     append("note", "TypeScript, with room to think.");
     append("note", "Try: 21 |> ((n: number) => n * 2)");
+    append("note", "Ask: // What does the pipeline operator do?");
 };
 
 // Coded by OpenAI Codex.
@@ -128,7 +133,7 @@ const scheduleCheck = () => {
     window.clearTimeout(checkTimer);
     checkController?.abort();
     editor.classList.remove("has-errors");
-    if (!input.value.trim() || busy) return;
+    if (!input.value.trim() || busy || instructorQuestion(input.value) !== null) return;
     const source = input.value;
     checkTimer = window.setTimeout(async () => {
         const controller = new AbortController();
@@ -150,6 +155,12 @@ const submit = async () => {
     if (busy || !ready || !input.value.trim()) return;
     const source = input.value |> normalize;
     if (!withinLimits(source)) { append("error", "Limit: 100 lines and 8 KB per submission.", "!"); return; }
+    const question = instructorQuestion(source);
+    if (question !== null && (!question || question.length > 4000)) {
+        append("error", "Enter a question of up to 4,000 characters after //.", "!");
+        return;
+    }
+    const context = instructorContext.slice();
     window.clearTimeout(checkTimer);
     checkController?.abort();
     history.push(source);
@@ -160,8 +171,23 @@ const submit = async () => {
     input.value = "";
     redraw();
     editor.classList.remove("has-errors");
-    append("command", source, "❯");
+    append(question === null ? "command" : "question", source, "❯");
     setBusy(true);
+    if (question !== null) {
+        label("Asking instructor…");
+        try {
+            const response = await fetch("/api/instructor", {
+                method: "POST", headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ question, context }), signal: AbortSignal.timeout(25_000),
+            });
+            const result = await response.json();
+            if (!response.ok || !result.ok || typeof result.answer !== "string") append("error", result.error || "Instructor request failed.", "!");
+            else append("answer", result.answer, "AI");
+        } catch {
+            append("error", "Could not reach the instructor. Please try again.", "!");
+        } finally { finish(); }
+        return;
+    }
     label("Checking TypeScript…");
     try {
         const response = await fetch("/api/compile", {
@@ -233,8 +259,9 @@ resetButton.addEventListener("click", () => {
     window.clearTimeout(checkTimer);
     checkController?.abort();
     accepted = [];
+    instructorContext = [];
     editor.classList.remove("has-errors");
-    append("note", "Session reset. Variables cleared; history preserved.");
+    append("note", "Session reset. Variables and instructor context cleared; command history preserved.");
     startWorker();
 });
 welcome();

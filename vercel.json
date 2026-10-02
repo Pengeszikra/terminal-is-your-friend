@@ -4,9 +4,16 @@
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
   "functions": {
-    "api/*.js": {
+    "api/compile.js": {
       "includeFiles": "node_modules/@pengeszikra/**",
       "maxDuration": 15
+    },
+    "api/check.js": {
+      "includeFiles": "node_modules/@pengeszikra/**",
+      "maxDuration": 15
+    },
+    "api/instructor.js": {
+      "maxDuration": 30
     }
   },
   "headers": [

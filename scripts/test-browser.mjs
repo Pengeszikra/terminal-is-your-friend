@@ -56,6 +56,41 @@ try {
     assert.match(await page.locator(".entry-error").last().innerText(), /not assignable/);
     assert.match(await run("answer"), /40/);
 
+    // Coded by OpenAI Codex. Mock the instructor endpoint; code still uses the real compiler.
+    const questions = [];
+    let instructorFails = false;
+    await page.route("**/api/instructor", async route => {
+        questions.push(route.request().postDataJSON());
+        await route.fulfill({ status: instructorFails ? 503 : 200, contentType: "application/json", body: JSON.stringify(instructorFails
+            ? { ok: false, error: "The instructor is not configured yet." }
+            : { ok: true, answer: "The pipeline passes the left value to the function on the right. The result here is 42, and <img src=x> is plain text." }) });
+    });
+    assert.equal(questions.length, 0);
+    const commandCount = await page.locator(".entry-command").count();
+    await input.fill("// Why did my code fail?");
+    await page.waitForTimeout(850);
+    assert.equal(await page.locator(".editor.has-errors").count(), 0);
+    assert.equal(questions.length, 0);
+    await input.press("Enter");
+    await page.waitForFunction(() => !document.querySelector("#input").readOnly);
+    assert.equal(questions.length, 1);
+    assert.equal(questions[0].question, "Why did my code fail?");
+    assert.ok(questions[0].context.some(entry => entry.kind === "error" && entry.text.includes("not assignable")));
+    assert.equal(await page.locator(".entry-command").count(), commandCount);
+    assert.match(await page.locator(".entry-answer").last().innerText(), /pipeline/);
+    assert.equal(await page.locator("#output img").count(), 0);
+    await input.press("ArrowUp");
+    assert.equal(await input.inputValue(), "// Why did my code fail?");
+    await run("// This is a normal code comment\nanswer + 2");
+    assert.equal(questions.length, 1);
+    assert.equal(await page.locator(".entry-result").last().innerText(), "←\n42");
+    instructorFails = true;
+    await run("// What is the capital of France?");
+    assert.match(await page.locator(".entry-error").last().innerText(), /not configured/);
+    await run("answer");
+    assert.equal(await page.locator(".entry-result").last().innerText(), "←\n40");
+    instructorFails = false;
+
     // Coded by OpenAI Codex. Type-check bypass still cannot expose browser globals.
     assert.match(await run('(globalThis as any).window'), /undefined/);
     assert.match(await run('console.log.constructor("return typeof fetch")()'), /undefined/);
@@ -77,6 +112,8 @@ try {
     assert.match(await run("answer"), /Cannot find name/);
     await page.locator("#reset").click();
     await page.waitForFunction(() => !document.querySelector("#input").disabled);
+    await run("// What can I try next?");
+    assert.ok(questions.at(-1).context.every(entry => entry.kind === "note"));
     await page.locator("#clear").click();
     await run("const double = (n: number) => n * 2;");
     await run("[1, 2, 3] |> ((values: number[]) => values.map(double))");
@@ -87,7 +124,7 @@ try {
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
     await page.screenshot({ path: "test-results/terminal-mobile.png" });
     assert.deepEqual(failures, []);
-    console.log("Browser checks passed: pipeline, state, Shift+Enter, history, silent error palette, diagnostics, isolation, HTML escaping, paste limit, timeout recovery, desktop and mobile.");
+    console.log("Browser checks passed: pipeline, state, Shift+Enter, history, diagnostics, isolation, instructor routing/context/errors (mock API), HTML escaping, timeout recovery, desktop and mobile.");
 } finally {
     await browser.close();
     await new Promise(resolve => app.close(resolve));

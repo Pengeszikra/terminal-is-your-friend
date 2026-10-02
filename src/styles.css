@@ -40,6 +40,8 @@ button:disabled { cursor: wait; opacity: .5; }
 .entry-marker { user-select: none; color: #6e8474; }
 .entry-command { margin-top: 1.2rem; color: #d6e0d7; }
 .entry-result { color: #a9dfb4; }
+.entry-question { margin-top: 1.2rem; color: #d6e0d7; }
+.entry-answer, .entry-answer .entry-marker { color: #b6a9ea; }
 .entry-error { color: #f6a0a0; }
 .entry-warn { color: #e6bc84; }
 .entry-note { color: #94a499; }

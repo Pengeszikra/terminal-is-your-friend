@@ -4,6 +4,7 @@ import { readFile } from "node:fs/promises";
 import { resolve, extname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { compileInput, getCompiler, root } from "./compiler.mjs";
+import { createInstructorHandler } from "./instructor-handler.mjs";
 
 const mime = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8", ".svg": "image/svg+xml", ".wasm": "application/wasm" };
 const securityHeaders = {
@@ -16,6 +17,7 @@ const securityHeaders = {
 // Coded by OpenAI Codex.
 export function createApp() {
     let active = 0;
+    const instructor = createInstructorHandler({ protocol: "http" });
     return createServer(async (request, response) => {
         const host = request.headers.host;
         const port = request.socket.localPort;
@@ -28,6 +30,7 @@ export function createApp() {
         if (!hosts.includes(host)) return send(403, { error: "Invalid local host." });
         if (request.headers["sec-fetch-site"] === "cross-site") return send(403, { error: "Cross-site requests are disabled." });
         const pathname = new URL(request.url, `http://${host}`).pathname;
+        if (pathname === "/api/instructor") return instructor(request, response);
         if (request.method === "POST" && ["/api/compile", "/api/check"].includes(pathname)) {
             if (request.headers.origin !== `http://${host}`) return send(403, { error: "Same-origin request required." });
             if (!request.headers["content-type"]?.startsWith("application/json")) return send(415, { error: "JSON required." });
