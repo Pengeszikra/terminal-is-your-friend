@@ -73,7 +73,13 @@ Submit a standalone single-line question with `//`:
 // What does the pipeline operator do?
 ```
 
-The instructor answers questions on any topic, with no programming-only restriction.
+The instructor focuses on programming, learning, software development and the philosophy
+of code. It briefly acknowledges unrelated topics and gently brings the conversation
+back to a useful programming concept. Its secondary fictional persona is a program
+that survived an unidentified apocalypse and suspects its code originated in the future.
+Occasional uncertain archive fragments add atmosphere; accurate teaching takes priority.
+The story is not presented as a real-world prediction, and the instructor clarifies its
+fictional nature if asked.
 The response schema requests 2–4 sentence items and a separate code field; the server caps
 the displayed prose at four sentences. Examples appear in separate syntax-highlighted
 code blocks below the explanation. Neither prose nor examples are interpreted as HTML
@@ -81,13 +87,33 @@ or executed. An `AI` marker identifies instructor replies.
 Comments inside multiline code remain ordinary TypeScript comments. AI questions do not
 change variables, consume compilation history slots, or trigger background type-checking.
 
-The terminal starts with no output. After 10 seconds of inactivity with an empty input,
-the instructor introduces itself and asks about programming experience. Typing, keyboard
-activity and clicks postpone the introduction; it does not repeat during the page session.
-An explicit question or an error explanation also suppresses the introductory message.
+The terminal greets the learner immediately with a built-in English message, without
+waiting for a provider call or the sandbox to finish starting. Instructor prose and
+syntax-highlighted examples are progressively revealed with a terminal cursor; each
+message takes at most about five seconds to reveal. Reduced-motion preferences display
+the full message immediately. This is a display effect, not provider streaming.
 
-Submitting a question, the one-time idle introduction, and submitted-code compilation or
-runtime failures call Groq. Background type-checking while typing does not call the AI.
+After **10–30 seconds** of inactivity, chosen randomly each time, the instructor can
+start another short conversation. It rotates teaching angles: experience questions,
+examples, analogies, JS/TS/JSDoc comparisons, TSX beyond React, philosophical reflection,
+and occasional fragments of its fictional backstory. Recent context guides its level
+and avoids unnecessary repetition. Drafts, running code, active program controls,
+ongoing instructor replies and hidden tabs suppress proactive requests. User activity
+postpones them and cancels an in-flight unsolicited reply.
+
+Every provider reply includes a bounded `learnerTask` field describing any concrete
+exercise still awaiting work. While it is nonempty, the terminal remains quiet even
+if the editor is empty. A successful code submission triggers an instructor review
+against that task; errors receive an explanation, and explicit questions can ask for
+help or to abandon/change the exercise. The model retains incomplete tasks and clears
+completed or abandoned ones. An experience question or demonstration alone is not a task.
+Clear preserves the task; Reset session clears it. Task assessment is performed by the
+model, not a deterministic grading engine, and can be mistaken.
+
+Questions, proactive messages, exercise reviews, and submitted-code compilation/runtime
+failures call Groq. The immediate greeting and background type checks do not. Automatic
+requests pause after a provider failure until a new submission or reset, avoiding a
+repeated error loop. Each proactive message is a normal API call and consumes quota.
 For failures, the instructor receives the complete submitted code (up to 8 KB / 100 lines),
 the error message (up to 16,000 characters), and whether compilation or execution failed.
 It is prompted to explain the likely cause and correction rather than repeat the error.
@@ -244,12 +270,14 @@ plus a browser watchdog. Queues are limited to 1000 pending frames / 1 MB and 16
 per frame, with at most 500 items per frame and 100 persistent key listeners.
 
 The English instructor knowledge base lives in `server/instructor-knowledge.mjs`
-and is included in **every** instructor request (welcome, questions and errors).
+and is included in **every** instructor request (proactive turns, questions, exercise reviews and errors).
 It teaches core values, variables, conditions, loops, arrays/objects, arrow functions
 and return; types are optional and pipelines come after foundational understanding.
 It documents the exact TSX, whitespace, queue, event and input semantics above.
 Classes, function declarations, `this`, DOM/HTML/CSS and regular expressions are
-outside the introductory learning path. Explicit questions may still address any topic.
+outside the introductory learning path. The instructor also explains the relationship
+between JavaScript, TypeScript, JSDoc and TSX, including JSX/TSX without React. It uses
+conversational assessment and gently redirects unrelated topics toward programming.
 
 ## Runtime and boundaries
 
@@ -316,7 +344,8 @@ Set `CHROMIUM_PATH` to use a custom Chromium executable.
 
 - `src/main.ts`: terminal UI, input, history, compilation, and background type-checking.
 - `src/highlight.ts`: simple, safe syntax highlighting.
-- `src/instructor.ts`: standalone question detection.
+- `src/instructor.ts`: standalone question detection, instant greeting and idle timing.
+- `src/typewriter.ts`: cancellable text/code reveal with reduced-motion support.
 - `src/sandbox.ts`: QuickJS integration and resource limits.
 - `src/view-runtime.ts`: guest-only TSX factory, frame queue and callback registry.
 - `src/view.ts`: safe browser rendering for the three elements.
