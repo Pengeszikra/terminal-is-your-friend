@@ -16,6 +16,7 @@
     "test:browser": "npm run build && node scripts/test-browser.mjs"
   },
   "dependencies": {
+    "@babel/parser": "7.28.5",
     "@pengeszikra/typescript": "7.1.0-pipeline.1",
     "quickjs-emscripten": "0.32.0"
   },

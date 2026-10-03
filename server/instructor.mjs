@@ -1,4 +1,6 @@
 // Coded by OpenAI Codex. This module and its API key are never bundled for the browser.
+import { instructorKnowledge } from "./instructor-knowledge.mjs";
+
 export class InstructorError extends Error {
     constructor(status, message) { super(message); this.status = status; }
 }
@@ -62,7 +64,7 @@ export async function askInstructor(body, { signal, fetchImpl = fetch, apiKey = 
             signal: requestSignal,
             body: JSON.stringify({
                 // The output budget includes reasoning; the displayed answer stays short.
-                model: "openai/gpt-oss-120b", instructions: instructions + "\n" + tasks[input.kind], store: false, max_output_tokens: 2048,
+                model: "openai/gpt-oss-120b", instructions: instructions + "\n" + instructorKnowledge + "\n" + tasks[input.kind], store: false, max_output_tokens: 2048,
                 reasoning: { effort: "low" },
                 input: [{ role: "user", content: JSON.stringify(input) }],
                 text: { format: {
