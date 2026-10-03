@@ -15,7 +15,7 @@ User code runs only in a QuickJS VM in a worker. No window, document, DOM events
 
 The screen and queue
 <view>content</view> immediately enqueues one complete snapshot of the program screen. Frames are shown in FIFO order every 250 ms, one frame per tick. Each replaces the entire previous frame; no automatic reactive rerender occurs. A tight loop can prepare an animation synchronously. The last frame remains until replaced, cleared or reset. The terminal transcript and return value are a separate output channel.
-The screen is exactly seven monospace lines high and uses a real code element. Spaces, tabs and line breaks inside view are preserved, including leading/trailing newlines and indentation. There is no automatic centering: use three leading line breaks to reach the fourth line and spaces for horizontal placement. For precise layout you can also use a string expression such as <view>{"\\n\\n\\n          Hello"}</view>.
+The screen is exactly seven monospace lines high and uses a real code element inside the terminal transcript. It scrolls together with the other terminal entries, not in a separate fixed panel. Spaces, tabs and line breaks inside view are preserved, including leading/trailing newlines and indentation. By default there is no automatic centering: use three leading line breaks to reach the fourth line and spaces for horizontal placement. The optional boolean center prop enables horizontal and vertical centering: <view center>Hello</view> or <view center={true}>Hello</view>. Use center={false} or omit it for ordinary whitespace-based layout. Centering is part of each frame and does not carry over to later frames. Whitespace stays literal even when centered; avoid extra padding/newlines for automatic centering. For precise layout you can also use a string expression such as <view>{"\\n\\n\\n          Hello"}</view>.
 Only view, button and input are supported; no arbitrary tags, style/class attributes or HTML injection. Text is always displayed literally. Arrays of text/numbers/controls are allowed; null, undefined and booleans render nothing. Put visible buttons and inputs inside a view. Do not nest views as layout containers: each view is a separate frame.
 Example (fresh session):
 const render = content => <view>{content}</view>;
@@ -27,7 +27,7 @@ This returns "counting" to the transcript while the screen shows 100, then 99, d
 Queue limits: 1000 pending frames / 1 MB total, 16 KB per frame. An endless producer is not a substitute for waiting for interaction.
 
 Clickable buttons
-<button onClick={next}>Next</button> is visible and requires nonempty text and a callback. onClick receives no DOM event. Its callback can update ordinary variables and enqueue another view. Buttons belong to the displayed frame: replacement removes them, and stale clicks are ignored. Creating a button outside a view does not display it.
+<button onClick={next}>Next</button> is visible, uses inverse foreground/background colors with slightly rounded corners, and requires nonempty text and a callback. onClick receives no DOM event. Its callback can update ordinary variables and enqueue another view. Buttons belong to the displayed frame: replacement removes them, and stale clicks are ignored. Creating a button outside a view does not display it.
 Example (fresh session):
 let count = 0;
 const draw = () => <view>{count} <button onClick={() => { count++; draw(); }}>Next</button></view>;

@@ -25,14 +25,15 @@ export const viewRuntimeSource = String.raw`(() => {
     };
     const jsx = (tag, props, ...children) => {
         props = props || {};
-        const allowed = tag === "view" ? [] : tag === "button" ? ["onClick", "onPress"] : tag === "input" ? ["onInput", "value", "placeholder"] : null;
+        const allowed = tag === "view" ? ["center"] : tag === "button" ? ["onClick", "onPress"] : tag === "input" ? ["onInput", "value", "placeholder"] : null;
         if (!allowed) throw Error("Only <view>, <button> and <input> are supported.");
         for (const key of Object.keys(props)) if (!allowed.includes(key)) throw Error("Unsupported " + tag + " attribute: " + key);
         const content = flatten(children);
         if (tag === "view") {
+            if (props.center !== undefined && typeof props.center !== "boolean") throw Error("The view center prop must be a boolean.");
             const size = JSON.stringify(content).length;
             if (size > 16384 || queue.length >= 1000 || bytes + size > 1000000) throw Error("View queue limit exceeded (1000 frames / 1 MB; 16 KB per frame).");
-            queue.push({ children: content, size });
+            queue.push({ children: content, size, center: props.center === true });
             bytes += size;
             return;
         }
@@ -60,7 +61,7 @@ export const viewRuntimeSource = String.raw`(() => {
             active.set(id, { kind: child.tag === "button" ? "click" : "input", callback: child.callback });
             return { tag: child.tag, id, text: child.children.join(""), value: child.value, placeholder: child.placeholder };
         });
-        return JSON.stringify({ id: ++frameId, children });
+        return JSON.stringify({ id: ++frameId, center: frame.center, children });
     };
     const dispatch = (kind, id, value, frame) => {
         if (kind === "key") {
@@ -78,5 +79,5 @@ export const viewRuntimeSource = String.raw`(() => {
     return { takeFrame, dispatch, clear, returnSignal, takeResult: () => { const value = returned; returned = undefined; return value; } };
 })()`;
 
-export type ViewFrame = { id: number; children: (string | { tag: "button" | "input"; id: number; text: string; value: string; placeholder: string })[] };
+export type ViewFrame = { id: number; center: boolean; children: (string | { tag: "button" | "input"; id: number; text: string; value: string; placeholder: string })[] };
 export type ViewEvent = { kind: "click" | "input" | "key"; id: number; value: string; frame: number };

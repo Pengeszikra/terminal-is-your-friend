@@ -21,7 +21,12 @@ test("default TSX accepts plain JS, optional parameter types, and still checks e
         assert.equal((await run(sandbox, '21 |> double', [first])).value, "42");
         assert.equal((await compileInput({ source: 'typed("x")', history: [first] })).ok, false);
         assert.equal((await compileInput({ source: '<view>Hello</view>', history: [], }, { checkOnly: true })).ok, true);
-        for (const source of ['<div>no</div>', '<button onClick={() => 1} />', '<input onInput={n => n.toFixed()} />', '<view style="color:red">no</view>', '<button onPress={() => 1}>No</button>']) {
+        await run(sandbox, 'let centered = true; <view center={centered}>First</view>; centered = false; <view center={centered}>Second</view>; <view center>Third</view>; <view>Fourth</view>;');
+        assert.deepEqual([sandbox.nextFrame().center, sandbox.nextFrame().center, sandbox.nextFrame().center, sandbox.nextFrame().center], [true, false, true, false]);
+        const invalidCenter = sandbox.evaluate('__tiyf.jsx("view", {center: "yes"}, "bad")');
+        assert.equal(invalidCenter.ok, false);
+        assert.match(invalidCenter.error, /center prop must be a boolean/);
+        for (const source of ['<view center="yes">no</view>', '<div>no</div>', '<button onClick={() => 1} />', '<input onInput={n => n.toFixed()} />', '<view style="color:red">no</view>', '<button onPress={() => 1}>No</button>']) {
             assert.equal((await compileInput({ source, history: [] })).ok, false, source);
         }
     } finally { sandbox.dispose(); }

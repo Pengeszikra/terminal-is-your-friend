@@ -23,6 +23,34 @@ export async function checkViews(page, run) {
     const layout = await screen.evaluate(element => ({ height: element.clientHeight, line: parseFloat(getComputedStyle(element.firstChild).lineHeight), whitespace: getComputedStyle(element.firstChild).whiteSpace }));
     assert.ok(Math.abs(layout.height - 7 * layout.line) <= 1);
     assert.equal(layout.whitespace, 'pre');
+    assert.equal(await screen.evaluate(element => element.parentElement.id), 'output');
+    const scrollMovement = await page.locator('#terminal').evaluate(element => {
+        element.scrollTop = 0;
+        const before = document.querySelector('#program-screen').getBoundingClientRect().top;
+        element.scrollTop = 80;
+        return { scroll: element.scrollTop, movement: before - document.querySelector('#program-screen').getBoundingClientRect().top };
+    });
+    assert.ok(scrollMovement.scroll > 0);
+    assert.ok(Math.abs(scrollMovement.movement - scrollMovement.scroll) < 1, 'The view scrolls with terminal entries');
+    await run('<view center><button onClick={() => {}}>Centered</button></view>');
+    await screen.getByRole('button', { name: 'Centered' }).waitFor();
+    const centered = await screen.evaluate(element => {
+        const outer = element.getBoundingClientRect();
+        const inner = element.querySelector('code').getBoundingClientRect();
+        const button = getComputedStyle(element.querySelector('button'));
+        const view = getComputedStyle(element);
+        return { x: inner.x + inner.width / 2 - outer.x - outer.width / 2,
+            y: inner.y + inner.height / 2 - outer.y - outer.height / 2,
+            inverse: button.color === view.backgroundColor && button.backgroundColor === view.color,
+            radius: parseFloat(button.borderRadius) };
+    });
+    assert.ok(Math.abs(centered.x) < 1 && Math.abs(centered.y) < 1, 'center aligns on both axes');
+    assert.equal(centered.inverse, true);
+    assert.ok(centered.radius > 0 && centered.radius < 8);
+    await run('<view center={false}>Left</view>');
+    await page.waitForFunction(() => document.querySelector('#program-screen').textContent === 'Left');
+    assert.equal(await screen.evaluate(element => element.classList.contains('is-centered')), false);
+
     await run('<view>\n\n\n          Middle\n\n\n</view>');
     await page.waitForFunction(() => document.querySelector('#program-screen').textContent.includes('Middle'));
     assert.equal(await screen.textContent(), '\n\n\n          Middle\n\n\n');
@@ -49,7 +77,7 @@ export async function checkViews(page, run) {
 
     await run('let keyCount=0; <button onPress={key => { if(key === "ArrowRight") { keyCount++; <view>{keyCount}</view>; } }} />; <view>Keys</view>;');
     await page.waitForFunction(() => document.querySelector('#program-screen').textContent === 'Keys');
-    await screen.focus();
+    await screen.click();
     await page.keyboard.press('ArrowRight');
     await page.waitForFunction(() => document.querySelector('#program-screen').textContent === '1');
     await page.keyboard.press('ArrowRight');
@@ -80,7 +108,7 @@ export async function checkViews(page, run) {
 
     await run(String.raw`<view>{"\n\n  Your name: "}<input onInput={value => {}} placeholder="Name" />{"\n\n  "}<button onClick={() => <view>Welcome!</view>}>Continue</button></view>`);
     await screen.getByRole('button', { name: 'Continue' }).waitFor();
-    await page.locator('#terminal').evaluate(element => { element.scrollTop = 0; });
+    await screen.scrollIntoViewIfNeeded();
     await page.screenshot({ path: 'test-results/terminal-views-mobile.png' });
-    console.log('TSX browser checks passed: FIFO playback, seven lines, whitespace, clicks, input lifecycle, literal text, persistent keys, editor isolation, clear and callback reset.');
+    console.log('TSX browser checks passed: FIFO playback, inline scrolling, optional centering, inverse buttons, seven lines, whitespace, clicks, input lifecycle, literal text, persistent keys, editor isolation, clear and callback reset.');
 }

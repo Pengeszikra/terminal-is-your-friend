@@ -44,7 +44,7 @@ declare namespace JSX {
     interface Element { readonly __terminalElement: unique symbol }
     interface ElementChildrenAttribute { children: unknown }
     interface IntrinsicElements {
-        view: { children?: unknown };
+        view: { children?: unknown; center?: boolean };
         button: { onClick: () => unknown; onPress?: never; children: string | number } |
                 { onPress: (key: string) => unknown; onClick?: never; children?: never };
         input: { onInput: (value: string) => unknown; value?: string; placeholder?: string };
