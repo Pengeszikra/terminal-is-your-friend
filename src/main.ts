@@ -58,6 +58,7 @@ const screen = createViewScreen(screenElement, event => {
 });
 const clearViews = () => {
     screen.clear();
+    output.append(screenElement);
     eventQueue = [];
     if (ready) worker.postMessage({ type: "clear-views" });
 };
@@ -90,7 +91,10 @@ const append = (kind: string, text: string, marker = "", example = "") => {
     }
     row.append(prefix, body);
     output.append(row);
-    while (output.children.length > 300) output.firstElementChild?.remove();
+    while (output.children.length > 300) {
+        const oldestEntry = Array.from(output.children).find(child => child !== screenElement);
+        oldestEntry?.remove();
+    }
     scroll();
 };
 
@@ -176,7 +180,10 @@ const startWorker = () => {
             input.disabled = false;
             finish();
         } else if (event.data.type === "frame") {
+            const followOutput = terminal.scrollHeight - terminal.scrollTop - terminal.clientHeight < 40;
+            if (screenElement.hidden || !screenElement.isConnected) output.append(screenElement);
             screen.render(event.data.frame as ViewFrame);
+            if (followOutput) scroll();
         } else if (event.data.type === "event-result") {
             window.clearTimeout(eventWatchdog);
             eventPending = undefined;
@@ -396,7 +403,10 @@ document.addEventListener("keydown", event => {
 document.addEventListener("pointerdown", activity);
 terminal.addEventListener("click", event => {
     const target = event.target as HTMLElement;
-    if (!target.closest("textarea, input, button, a, .editor")) terminal.focus({ preventScroll: true });
+    if (!target.closest("textarea, input, button, a, .editor")) {
+        const focusTarget = screenElement.contains(target) ? screenElement : terminal;
+        focusTarget.focus({ preventScroll: true });
+    }
 });
 document.addEventListener("visibilitychange", activity);
 resetButton.addEventListener("click", () => {

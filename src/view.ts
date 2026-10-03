@@ -29,6 +29,7 @@ export function createViewScreen(element: HTMLElement, send: (event: ViewEvent) 
             }
             const wasHidden = element.hidden;
             const hadFocus = element.contains(document.activeElement);
+            element.classList.toggle("is-centered", frame.center === true);
             element.replaceChildren(content);
             element.hidden = false;
             const editor = document.querySelector<HTMLTextAreaElement>("#input");

@@ -188,11 +188,14 @@ remain active. The application itself still builds in strict TypeScript mode.
 No React package or setup is needed. Use `value as Type` rather than `<Type>value`
 for type assertions; generic arrows can use `<T,>` to disambiguate TSX.
 
-`<view>` enqueues a complete snapshot of a dedicated **seven-line monospace screen**.
+`<view>` enqueues a complete snapshot of a **seven-line monospace screen inside the terminal transcript**.
 One frame replaces the previous one every **250 ms**, in order. The last frame stays
 visible. Spaces, indentation and line breaks are preserved verbatim inside a real
-`<code>` element; three leading newlines place text on the fourth line. Centering is
-controlled by source whitespace, not automatic layout. Views are independent frames,
+`<code>` element; three leading newlines place text on the fourth line. By default, layout is controlled by source whitespace. With `<view center>...</view>`
+(or `center={true}`), the content is centered horizontally and vertically within the
+seven-line view. `center={false}` restores the normal layout. Whitespace remains literal
+in both modes, so avoid extra padding/newlines when you want automatic centering.
+The view scrolls with the other terminal entries; it is not a fixed panel. Views are independent frames,
 so do not nest them as layout containers. The transcript and return value are separate.
 
 ```tsx
@@ -210,8 +213,8 @@ executed. As with other cells, previous successful cells are type-checked but ne
 
 | Element | Behavior |
 | --- | --- |
-| `<view>...</view>` | Enqueue a full replacement frame. Text, numbers, arrays, buttons and inputs are accepted. |
-| `<button onClick={next}>Next</button>` | Visible, labeled button inside a view. Calls `next()` without a DOM event. Removed when its frame is replaced. |
+| `<view>...</view>` | Enqueue a full replacement frame inside the scrollable terminal. Optional boolean `center` centers the content horizontally and vertically. |
+| `<button onClick={next}>Next</button>` | Visible, labeled button inside a view, with inverse foreground/background colors and slightly rounded corners. Calls `next()` without a DOM event. Removed when its frame is replaced. |
 | `<button onPress={handleKey} />` | Invisible, persistent listener; register once outside the rendering loop. Receives a string such as `"ArrowRight"`. |
 | `<input onInput={value => ...} />` | Input inside a view; passes the current string directly. Optional `value` and `placeholder` are strings. |
 
