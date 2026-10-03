@@ -1,4 +1,5 @@
 // Coded by OpenAI Codex. User code is compiled here; it is never executed by Node.
+import { prepareTSX, viewDeclarations } from "./tsx.mjs";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { mkdtemp, writeFile, readFile, rm, access } from "node:fs/promises";
@@ -61,13 +62,14 @@ export async function compileInput(body, { checkOnly = false, signal } = {}) {
     const sources = validateInput(body);
     const directory = await mkdtemp(join(tmpdir(), "friend-ts-"));
     try {
-        const files = sources.map((_, index) => `cell-${index + 1}.ts`);
-        await Promise.all(sources.map((source, index) => writeFile(join(directory, files[index]), source)));
-        await writeFile(join(directory, "console.d.ts"), declarations);
+        const files = sources.map((_, index) => `cell-${index + 1}.tsx`);
+        const prepared = sources.map(prepareTSX);
+        await Promise.all(prepared.map((source, index) => writeFile(join(directory, files[index]), source)));
+        await writeFile(join(directory, "console.d.ts"), declarations + viewDeclarations);
         await writeFile(join(directory, "tsconfig.json"), JSON.stringify({
             compilerOptions: {
                 target: "ES2023", module: "ESNext", moduleResolution: "Bundler", moduleDetection: "legacy", lib: ["ES2023"],
-                types: [], strict: true, skipLibCheck: true, noEmitOnError: true,
+                types: [], strict: true, noImplicitAny: false, jsx: "react", jsxFactory: "__tiyf.jsx", skipLibCheck: true, noEmitOnError: true,
                 noResolve: true, noEmit: checkOnly, outDir: "out", pretty: false,
             },
             files: ["console.d.ts", ...files],
@@ -86,6 +88,10 @@ export async function compileInput(body, { checkOnly = false, signal } = {}) {
         const javascript = checkOnly ? undefined : (await readFile(join(directory, "out", `cell-${sources.length}.js`), "utf8"))
             .replace(/^"use strict";\r?\n/, '"use strict";\nvoid 0;\n');
         return { ok: true, javascript };
+    } catch (error) {
+        if (signal?.aborted) throw error;
+        if (error.code?.startsWith("BABEL_PARSER_")) return { ok: false, error: `Syntax error: ${error.message}` };
+        throw error;
     } finally {
         await rm(directory, { recursive: true, force: true });
     }

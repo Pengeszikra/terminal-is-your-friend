@@ -143,7 +143,7 @@ configure platform-level rate limiting to control compiler usage.
 - **↑ / ↓:** recall the previous or next submission when the cursor is on the first or last line.
 - **Alt+↑ / Alt+↓:** navigate history from any line of a multiline block.
 - **Tab:** insert two spaces.
-- **Clear / Ctrl+L:** clear the visible output while keeping variables, history, and the current draft.
+- **Clear / Ctrl+L:** clear the visible output and queued/current views while keeping variables, persistent key listeners, history, and the current draft.
 - **Reset session:** reset the sandbox and type state while keeping command history.
 
 Syntax highlighting updates as you type. After a short pause, the actual TypeScript compiler
@@ -180,19 +180,87 @@ A pipeline that changes types:
   |> ((total: number) => `Total: ${total}`)
 ```
 
+## TSX terminal elements
+
+Every cell is parsed as **TSX**, including ordinary JS and TS. Parameter annotations
+are optional (`noImplicitAny: false`); explicit annotations and other strict checks
+remain active. The application itself still builds in strict TypeScript mode.
+No React package or setup is needed. Use `value as Type` rather than `<Type>value`
+for type assertions; generic arrows can use `<T,>` to disambiguate TSX.
+
+`<view>` enqueues a complete snapshot of a dedicated **seven-line monospace screen**.
+One frame replaces the previous one every **250 ms**, in order. The last frame stays
+visible. Spaces, indentation and line breaks are preserved verbatim inside a real
+`<code>` element; three leading newlines place text on the fourth line. Centering is
+controlled by source whitespace, not automatic layout. Views are independent frames,
+so do not nest them as layout containers. The transcript and return value are separate.
+
+```tsx
+const render = content => <view>{content}</view>;
+for (let frame = 0; frame < 100; frame++) {
+    100 - frame |> render;
+}
+return "counting";
+```
+
+This prints `"counting"` in the transcript and plays 100 down to 1 on the screen,
+with only one number visible at a time. A top-level `return` ends the submission;
+ordinary arrow-function returns keep their usual meaning. Code after return is not
+executed. As with other cells, previous successful cells are type-checked but never replayed.
+
+| Element | Behavior |
+| --- | --- |
+| `<view>...</view>` | Enqueue a full replacement frame. Text, numbers, arrays, buttons and inputs are accepted. |
+| `<button onClick={next}>Next</button>` | Visible, labeled button inside a view. Calls `next()` without a DOM event. Removed when its frame is replaced. |
+| `<button onPress={handleKey} />` | Invisible, persistent listener; register once outside the rendering loop. Receives a string such as `"ArrowRight"`. |
+| `<input onInput={value => ...} />` | Input inside a view; passes the current string directly. Optional `value` and `placeholder` are strings. |
+
+Keyboard listeners run when interacting with the program screen, not while typing
+in the code editor or a text input. Click/focus the program screen or terminal output to use them.
+They survive replacement and Clear, and are removed by Reset session or runtime errors.
+Click and input callbacks belong to their displayed frame; stale events are ignored.
+
+Example for a **fresh session**:
+
+```tsx
+let name = "";
+<view>Your name: <input onInput={value => { name = value; }} placeholder="Name" /> <button onClick={() => <view>Hello, {name}!</view>}>Done</button></view>;
+```
+
+While typing, this view stays on screen. Clicking Done enqueues the greeting.
+**A replacement frame discards the previous input's contents and focus.** The
+programmer must avoid replacing the view while waiting for input. There is no
+implicit reactive rerender, automatic pause, or automatic input preservation.
+An explicit `value={name}` can initialize a later field.
+
+Only these three tags and their documented attributes are supported. Markup-like
+strings stay literal text. Callbacks are never transferred to the browser realm:
+only bounded text/control descriptions and primitive event messages cross the worker
+boundary. Each callback has the same execution, memory and output limits as a cell,
+plus a browser watchdog. Queues are limited to 1000 pending frames / 1 MB and 16 KB
+per frame, with at most 500 items per frame and 100 persistent key listeners.
+
+The English instructor knowledge base lives in `server/instructor-knowledge.mjs`
+and is included in **every** instructor request (welcome, questions and errors).
+It teaches core values, variables, conditions, loops, arrays/objects, arrow functions
+and return; types are optional and pipelines come after foundational understanding.
+It documents the exact TSX, whitespace, queue, event and input semantics above.
+Classes, function declarations, `this`, DOM/HTML/CSS and regular expressions are
+outside the introductory learning path. Explicit questions may still address any topic.
+
 ## Runtime and boundaries
 
 1. The browser sends source code to the Node compiler API, served locally or by a Vercel Function.
 2. The server type-checks and compiles it with the native TypeScript fork. **It does not execute user JavaScript.**
 3. Only the new submission's JavaScript is passed to a QuickJS WebAssembly virtual machine running in a Web Worker.
-4. The guest VM receives its own JavaScript built-ins and a narrow `console` bridge.
+4. The guest VM receives its own JavaScript built-ins, a narrow `console` bridge, and the three terminal elements. Event callbacks remain inside QuickJS.
 
 The guest has no access to `window`, the DOM, `document`, `fetch`, `WebSocket`, `Worker`,
 `localStorage`, cookies, Node's `process`, `require`, or the filesystem. Its `globalThis`
 and `Function` objects also belong to the QuickJS environment.
 Browser `eval`, browser `new Function`, and Node's `vm` are not used as a sandbox.
 There is no module loader, import/export support, timers, or top-level await.
-This first version is intended for synchronous TS/JS experiments; it does not render DOM or JSX.
+Programs use TSX by default. The three terminal elements described below are rendered through a narrow, validated bridge; user code still has no DOM access.
 
 The custom `console` supports `log`, `info`, `warn`, `error`, and `clear`.
 Output is rendered as text, never inserted as HTML.
@@ -247,6 +315,10 @@ Set `CHROMIUM_PATH` to use a custom Chromium executable.
 - `src/highlight.ts`: simple, safe syntax highlighting.
 - `src/instructor.ts`: standalone question detection.
 - `src/sandbox.ts`: QuickJS integration and resource limits.
+- `src/view-runtime.ts`: guest-only TSX factory, frame queue and callback registry.
+- `src/view.ts`: safe browser rendering for the three elements.
+- `server/tsx.mjs`: TSX whitespace/return preprocessing and intrinsic type declarations.
+- `server/instructor-knowledge.mjs`: English teaching scope, APIs and verified examples.
 - `src/worker.ts`: messages between the browser and the sandbox.
 - `server/compiler.mjs`: type state and native compilation.
 - `server/index.mjs`: local HTTP API and static asset serving.

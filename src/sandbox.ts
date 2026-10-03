@@ -1,4 +1,5 @@
 // Coded by OpenAI Codex. QuickJS is a separate WASM VM; no browser/Node objects cross this boundary.
+import { viewRuntimeSource, type ViewFrame, type ViewEvent } from "./view-runtime.js";
 import { getQuickJS, type QuickJSContext, type QuickJSHandle } from "quickjs-emscripten";
 
 export type Output = { kind: "log" | "info" | "warn" | "error" | "clear"; text: string };
@@ -39,6 +40,8 @@ export async function createSandbox(onOutput: (output: Output) => void) {
     const engine = await getQuickJS();
     let vm: QuickJSContext;
     let formatter: QuickJSHandle;
+    let views: QuickJSHandle;
+    let returnSignal: QuickJSHandle;
     let deadline = 0;
     let count = 0;
     let outputBytes = 0;
@@ -60,6 +63,8 @@ export async function createSandbox(onOutput: (output: Output) => void) {
         vm.runtime.setInterruptHandler(() => Date.now() > deadline);
         deadline = Date.now() + timeLimit;
         formatter = vm.unwrapResult(vm.evalCode(formatterSource));
+        views = vm.unwrapResult(vm.evalCode(viewRuntimeSource));
+        returnSignal = vm.getProp(views, "returnSignal");
         const consoleObject = vm.newObject();
         for (const kind of ["log", "info", "warn", "error", "clear"] as const) {
             const fn = vm.newFunction(kind, (...args) => {
@@ -81,44 +86,69 @@ export async function createSandbox(onOutput: (output: Output) => void) {
     };
 
     // Coded by OpenAI Codex.
-    const dispose = () => { formatter.dispose(); vm.dispose(); };
+    const dispose = () => { returnSignal.dispose(); views.dispose(); formatter.dispose(); vm.dispose(); };
     const reset = () => { dispose(); initialize(); };
     initialize();
 
-    return {
-        // Coded by OpenAI Codex. Errors reset partial runtime state to keep TS and JS sessions consistent.
-        evaluate(javascript: string): Evaluation {
-            deadline = Date.now() + timeLimit;
-            count = 0;
-            outputBytes = 0;
-            try {
-                const result = vm.evalCode(javascript, "terminal.js", { type: "global" });
-                if (result.error) {
-                    const error = vm.dump(result.error);
-                    result.error.dispose();
-                    const message = typeof error === "object" && error ? `${error.name || "Error"}: ${error.message || "Execution failed"}` : String(error);
-                    reset();
-                    return { ok: false, error: message.includes("interrupted") ? "Execution time limit exceeded (2 seconds)." : message.slice(0, 4000), reset: true };
-                }
-                const value = format(result.value);
-                result.value.dispose();
-                const jobs = vm.runtime.executePendingJobs(100);
-                if (jobs.error) {
-                    const error = vm.dump(jobs.error);
-                    jobs.error.dispose();
-                    reset();
-                    return { ok: false, error: String(error?.message || "Asynchronous execution failed."), reset: true };
-                }
-                if (vm.runtime.hasPendingJob()) {
-                    reset();
-                    return { ok: false, error: "Pending-job limit exceeded.", reset: true };
-                }
-                return { ok: true, value };
-            } catch (error) {
-                reset();
-                return { ok: false, error: error instanceof Error ? error.message : String(error), reset: true };
+    const callView = (name: string, args: QuickJSHandle[] = []) => {
+        const fn = vm.getProp(views, name);
+        try { return vm.callFunction(fn, vm.undefined, ...args); }
+        finally { fn.dispose(); }
+    };
+
+    // Each callback receives the same time, heap, output and pending-job limits as a submission.
+    const execute = (operation: () => ReturnType<QuickJSContext["evalCode"]>, raw = false): Evaluation => {
+        deadline = Date.now() + timeLimit;
+        count = 0;
+        outputBytes = 0;
+        try {
+            let result = operation();
+            if (result.error && vm.eq(result.error, returnSignal)) {
+                result.error.dispose();
+                result = callView("takeResult");
             }
+            if (result.error) {
+                const error = vm.dump(result.error);
+                result.error.dispose();
+                const message = typeof error === "object" && error ? `${error.name || "Error"}: ${error.message || "Execution failed"}` : String(error);
+                reset();
+                return { ok: false, error: message.includes("interrupted") ? "Execution time limit exceeded (2 seconds)." : message.slice(0, 4000), reset: true };
+            }
+            const value = raw ? vm.getString(result.value) : format(result.value);
+            result.value.dispose();
+            const jobs = vm.runtime.executePendingJobs(100);
+            if (jobs.error) {
+                const error = vm.dump(jobs.error);
+                jobs.error.dispose();
+                reset();
+                return { ok: false, error: String(error?.message || "Asynchronous execution failed."), reset: true };
+            }
+            if (vm.runtime.hasPendingJob()) {
+                reset();
+                return { ok: false, error: "Pending-job limit exceeded.", reset: true };
+            }
+            return { ok: true, value };
+        } catch (error) {
+            reset();
+            return { ok: false, error: error instanceof Error ? error.message : String(error), reset: true };
+        }
+    };
+
+    return {
+        evaluate: (javascript: string) => execute(() => vm.evalCode(javascript, "terminal.js", { type: "global" })),
+        nextFrame(): ViewFrame | undefined {
+            const result = execute(() => callView("takeFrame"), true);
+            if (!result.ok) throw new Error(result.error);
+            return result.value ? JSON.parse(result.value) as ViewFrame : undefined;
         },
+        dispatch(event: ViewEvent): Evaluation {
+            return execute(() => {
+                const args = [vm.newString(event.kind), vm.newNumber(event.id), vm.newString(event.value.slice(0, 8192)), vm.newNumber(event.frame)];
+                try { return callView("dispatch", args); }
+                finally { args.forEach(arg => arg.dispose()); }
+            });
+        },
+        clearViews: () => execute(() => callView("clear")),
         reset,
         dispose,
     };

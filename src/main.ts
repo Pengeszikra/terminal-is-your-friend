@@ -1,4 +1,6 @@
 // Coded by OpenAI Codex. UI and submitted snippets both use the pipeline TypeScript fork.
+import { createViewScreen } from "./view.js";
+import type { ViewFrame, ViewEvent } from "./view-runtime.js";
 import { highlight } from "./highlight.js";
 import { instructorQuestion } from "./instructor.js";
 import type { Evaluation, Output } from "./sandbox.js";
@@ -10,6 +12,11 @@ const code = document.querySelector<HTMLElement>("#highlight-code")!;
 const editor = document.querySelector<HTMLElement>(".editor")!;
 const status = document.querySelector<HTMLElement>("#status")!;
 const resetButton = document.querySelector<HTMLButtonElement>("#reset")!;
+const screenElement = document.querySelector<HTMLElement>("#program-screen")!;
+let eventWatchdog = 0;
+let eventPending: number | undefined;
+let eventQueue: ViewEvent[] = [];
+let lastProgramSource = "";
 let worker: Worker;
 let ready = false;
 let busy = false;
@@ -27,6 +34,33 @@ let instructorContext: { kind: string; text: string }[] = [];
 let idleTimer = 0;
 let introduced = false;
 let instructorRequest: { controller: AbortController; kind: string } | undefined;
+
+// Keep callback execution sequential, bounded and separate from terminal return values.
+const sendNextEvent = () => {
+    if (eventPending !== undefined || busy || !ready || !eventQueue.length) return;
+    eventPending = ++requestId;
+    input.readOnly = true;
+    const event = eventQueue.shift()!;
+    eventWatchdog = window.setTimeout(() => {
+        accepted = [];
+        append("error", "Event handler stopped after 3 seconds. Variables cleared.", "!");
+        startWorker();
+        explainError(lastProgramSource, "Event handler exceeded the execution limit.", "runtime");
+    }, 3000);
+    worker.postMessage({ type: "event", id: eventPending, event });
+};
+const screen = createViewScreen(screenElement, event => {
+    if (!ready || busy) return;
+    const last = eventQueue.at(-1);
+    if (event.kind === "input" && last?.kind === "input" && last.id === event.id) eventQueue[eventQueue.length - 1] = event;
+    else if (eventQueue.length < 100) eventQueue.push(event);
+    sendNextEvent();
+});
+const clearViews = () => {
+    screen.clear();
+    eventQueue = [];
+    if (ready) worker.postMessage({ type: "clear-views" });
+};
 
 // Coded by OpenAI Codex.
 const scroll = () => { terminal.scrollTop = terminal.scrollHeight; };
@@ -120,7 +154,7 @@ const finish = () => {
     window.clearTimeout(watchdog);
     pending = undefined;
     setBusy(false);
-    label("TS |> · sandbox ready");
+    label("TSX |> · sandbox ready");
     input.focus();
     scroll();
     scheduleIntroduction();
@@ -129,6 +163,10 @@ const finish = () => {
 // Coded by OpenAI Codex. A watchdog can terminate the entire worker even if the guest misbehaves.
 const startWorker = () => {
     ready = false;
+    window.clearTimeout(eventWatchdog);
+    eventPending = undefined;
+    eventQueue = [];
+    screen.clear();
     input.disabled = true;
     worker?.terminate();
     worker = new Worker(new URL("./worker.js", import.meta.url), { type: "module" });
@@ -137,9 +175,24 @@ const startWorker = () => {
             ready = true;
             input.disabled = false;
             finish();
+        } else if (event.data.type === "frame") {
+            screen.render(event.data.frame as ViewFrame);
+        } else if (event.data.type === "event-result") {
+            window.clearTimeout(eventWatchdog);
+            eventPending = undefined;
+            input.readOnly = busy;
+            const result = event.data.result as Evaluation;
+            if (!result.ok) {
+                accepted = [];
+                clearViews();
+                append("error", result.error ?? "Event handler failed.", "!");
+                append("note", "Runtime reset after the error. Variables and event listeners were cleared.");
+                explainError(lastProgramSource, result.error ?? "Event handler failed.", "runtime");
+            }
+            sendNextEvent();
         } else if (event.data.type === "output") {
             const message = event.data.output as Output;
-            if (message.kind === "clear") output.replaceChildren();
+            if (message.kind === "clear") { output.replaceChildren(); clearViews(); }
             else append(message.kind, message.text);
         } else if (event.data.type === "result" && pending && pending.id === event.data.id) {
             const result = event.data.result as Evaluation;
@@ -151,6 +204,7 @@ const startWorker = () => {
                 append("error", result.error ?? "Execution failed.", "!");
                 if (result.reset) {
                     accepted = [];
+                    clearViews();
                     append("note", "Runtime reset after the error. Variables were cleared; command history is still available.");
                 }
             }
@@ -210,7 +264,7 @@ const scheduleCheck = () => {
 
 // Coded by OpenAI Codex.
 const submit = async () => {
-    if (busy || !ready || !input.value.trim()) return;
+    if (busy || eventPending !== undefined || !ready || !input.value.trim()) return;
     const source = input.value |> normalize;
     if (!withinLimits(source)) { append("error", "Limit: 100 lines and 8 KB per submission.", "!"); return; }
     const question = instructorQuestion(source);
@@ -254,6 +308,7 @@ const submit = async () => {
             if (response.ok) explainError(source, error, "compile");
             return;
         }
+        lastProgramSource = source;
         pending = { id: ++requestId, source };
         label("Running…");
         watchdog = window.setTimeout(() => {
@@ -320,6 +375,7 @@ const clearScreen = () => {
     window.clearTimeout(idleTimer);
     introduced = true;
     output.replaceChildren();
+    clearViews();
     input.focus();
 };
 document.querySelector("#clear")!.addEventListener("click", clearScreen);
@@ -327,9 +383,21 @@ document.addEventListener("keydown", event => {
     if (event.ctrlKey && event.key.toLowerCase() === "l") {
         event.preventDefault();
         clearScreen();
-    } else activity();
+    } else {
+        activity();
+        const target = event.target as HTMLElement;
+        if (!event.isComposing && !event.ctrlKey && !event.metaKey && !event.altKey &&
+            target !== input && target.tagName !== "INPUT" && target.tagName !== "TEXTAREA" && !target.isContentEditable) {
+            screen.key(event.key);
+            if (screenElement.contains(target) && ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", " "].includes(event.key)) event.preventDefault();
+        }
+    }
 }, { capture: true });
 document.addEventListener("pointerdown", activity);
+terminal.addEventListener("click", event => {
+    const target = event.target as HTMLElement;
+    if (!target.closest("textarea, input, button, a, .editor")) terminal.focus({ preventScroll: true });
+});
 document.addEventListener("visibilitychange", activity);
 resetButton.addEventListener("click", () => {
     cancelInstructor();

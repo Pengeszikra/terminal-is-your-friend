@@ -49,3 +49,12 @@ button:disabled { cursor: wait; opacity: .5; }
 .entry-note { color: #94a499; }
 #terminal { scrollbar-color: #3f5144 #101411; scrollbar-width: thin; }
 @media (prefers-reduced-motion: no-preference) { button { transition: color .15s ease; } }
+
+/* Coded by OpenAI Codex. Seven fixed monospace lines; source whitespace controls layout. */
+#program-screen { flex-shrink: 0; margin: 1rem 0 0 2rem; height: 11.55rem; overflow: auto; outline-offset: .25rem; background: #151c17; color: #a9dfb4; }
+#program-screen[hidden] { display: none; }
+#program-screen code { display: block; white-space: pre; font: inherit; font-size: 1rem; line-height: 1.65rem; min-height: 100%; }
+#program-screen button, #program-screen input { font: inherit; line-height: inherit; color: inherit; border: 1px solid #455348; border-radius: .2rem; padding: 0 .4rem; vertical-align: baseline; background: #202b23; }
+#program-screen button { cursor: pointer; }
+#program-screen input { max-width: 100%; width: 18ch; }
+#program-screen :focus-visible, #program-screen:focus-visible { outline: 2px solid #95d4a4; }

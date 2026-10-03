@@ -1,4 +1,5 @@
 // Coded by OpenAI Codex. Optional end-to-end checks; install Chromium with npx playwright install chromium.
+import { checkViews } from "./check-views-browser.mjs";
 import { chromium } from "playwright";
 import assert from "node:assert/strict";
 import { mkdir } from "node:fs/promises";
@@ -164,6 +165,7 @@ try {
     await page.setViewportSize({ width: 390, height: 844 });
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
     await page.screenshot({ path: "test-results/terminal-mobile.png" });
+    await checkViews(page, run);
     assert.deepEqual(failures, []);
 
     // Coded by OpenAI Codex. Virtual time verifies the empty start, activity reset, draft guard and one-shot greeting.
