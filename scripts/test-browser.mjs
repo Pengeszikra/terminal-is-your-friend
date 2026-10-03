@@ -1,4 +1,5 @@
 // Coded by OpenAI Codex. Optional end-to-end checks; install Chromium with npx playwright install chromium.
+import { checkInstructor } from "./check-instructor-browser.mjs";
 import { checkViews } from "./check-views-browser.mjs";
 import { chromium } from "playwright";
 import assert from "node:assert/strict";
@@ -14,6 +15,7 @@ const browser = await chromium.launch({
 });
 try {
     const page = await browser.newPage({ viewport: { width: 1365, height: 900 } });
+    await page.emulateMedia({ reducedMotion: "reduce" });
     const failures = [];
     page.on("pageerror", error => failures.push(error.message));
     const base = `http://127.0.0.1:${app.address().port}`;
@@ -30,13 +32,14 @@ try {
         if (delayReply) await new Promise(resolve => { releaseReply = resolve; });
         await route.fulfill({ status: instructorFails ? 503 : 200, contentType: "application/json", body: JSON.stringify(instructorFails
             ? { ok: false, error: "The instructor is not configured yet." }
-            : { ok: true, answer: "The pipeline passes the left value to the function on the right. The result here is 42, and <img src=x> is plain text.", code: 'const example = "<img src=x>";\n21 |> ((n: number) => n * 2)' }) });
+            : { ok: true, answer: "The pipeline passes the left value to the function on the right. The result here is 42, and <img src=x> is plain text.", learnerTask: "", code: 'const example = "<img src=x>";\n21 |> ((n: number) => n * 2)' }) });
     });
     await page.goto(base);
     const input = page.locator("#input");
     await page.waitForFunction(() => !document.querySelector("#input").disabled);
 
-    assert.equal(await page.locator("#output").innerText(), "");
+    assert.match(await page.locator("#output").innerText(), /Welcome to TiyF/);
+    await page.locator("#clear").click();
     assert.match(await page.locator("h1").innerText(), /^\|>/);
 
     // Coded by OpenAI Codex.
@@ -168,36 +171,8 @@ try {
     await checkViews(page, run);
     assert.deepEqual(failures, []);
 
-    // Coded by OpenAI Codex. Virtual time verifies the empty start, activity reset, draft guard and one-shot greeting.
-    const idlePage = await browser.newPage();
-    let introductions = 0;
-    await idlePage.clock.install({ time: new Date("2026-10-03T00:00:00Z") });
-    await idlePage.clock.pauseAt(new Date("2026-10-03T00:00:01Z"));
-    await idlePage.route("**/api/instructor", async route => {
-        const request = route.request().postDataJSON();
-        assert.equal(request.kind, "welcome");
-        introductions++;
-        await route.fulfill({ json: { ok: true, answer: "I am your TS/JS instructor and terminal. What programming experience do you have?", code: "" } });
-    });
-    await idlePage.goto(base);
-    await idlePage.locator("#input:not([disabled])").waitFor();
-    assert.equal(await idlePage.locator("#output").innerText(), "");
-    await idlePage.clock.fastForward(9000);
-    assert.equal(introductions, 0);
-    await idlePage.locator("#input").press("ArrowLeft");
-    await idlePage.clock.fastForward(9000);
-    assert.equal(introductions, 0);
-    await idlePage.locator("#input").fill("42");
-    await idlePage.clock.fastForward(11000);
-    assert.equal(introductions, 0);
-    await idlePage.locator("#input").fill("");
-    await idlePage.clock.fastForward(10000);
-    await idlePage.locator(".entry-answer").waitFor();
-    assert.equal(introductions, 1);
-    await idlePage.clock.fastForward(30000);
-    assert.equal(introductions, 1);
-    await idlePage.close();
-    console.log("Browser checks passed: empty start, 10-second idle introduction, pipeline, state, Shift+Enter, history, diagnostics, automatic error explanations with full source, highlighted AI code, Ctrl+L, stale-reply cancellation, isolation, HTML escaping, timeout recovery, desktop and mobile (mock AI API).");
+    await checkInstructor(browser, base);
+    console.log("Browser checks passed: instant greeting, proactive task-aware instructor, pipeline, state, input/history, diagnostics, typewriter/highlighted AI code, cancellation, isolation, views, desktop and mobile (mock AI API).");
 } finally {
     await browser.close();
     await new Promise(resolve => app.close(resolve));

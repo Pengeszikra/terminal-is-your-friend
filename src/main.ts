@@ -2,7 +2,8 @@
 import { createViewScreen } from "./view.js";
 import type { ViewFrame, ViewEvent } from "./view-runtime.js";
 import { highlight } from "./highlight.js";
-import { instructorQuestion } from "./instructor.js";
+import { typewrite } from "./typewriter.js";
+import { instructorQuestion, welcomeMessage, idleDelay } from "./instructor.js";
 import type { Evaluation, Output } from "./sandbox.js";
 
 const input = document.querySelector<HTMLTextAreaElement>("#input")!;
@@ -32,7 +33,9 @@ let checkController: AbortController | undefined;
 let pending: { id: number; source: string } | undefined;
 let instructorContext: { kind: string; text: string }[] = [];
 let idleTimer = 0;
-let introduced = false;
+let learnerTask = "";
+let idleTurn = 0;
+let autoPaused = false;
 let instructorRequest: { controller: AbortController; kind: string } | undefined;
 
 // Keep callback execution sequential, bounded and separate from terminal return values.
@@ -66,9 +69,12 @@ const clearViews = () => {
 // Coded by OpenAI Codex.
 const scroll = () => { terminal.scrollTop = terminal.scrollHeight; };
 const label = (text: string) => { status.textContent = text; };
-const append = (kind: string, text: string, marker = "", example = "") => {
+const remember = (kind: string, text: string, example = "") => {
     instructorContext.push({ kind, text: (text + (example ? "\n" + example : "")).slice(0, 1200) });
     if (instructorContext.length > 12) instructorContext.shift();
+};
+const append = (kind: string, text: string, marker = "", example = "", record = true) => {
+    if (record) remember(kind, text, example);
     const row = document.createElement("div");
     row.className = `entry entry-${kind}`;
     const prefix = document.createElement("span");
@@ -96,6 +102,7 @@ const append = (kind: string, text: string, marker = "", example = "") => {
         oldestEntry?.remove();
     }
     scroll();
+    return { row, content, body };
 };
 
 // Coded by OpenAI Codex.
@@ -104,42 +111,87 @@ const cancelInstructor = () => {
     instructorRequest = undefined;
 };
 
-const askInstructor = async (details: { kind: "question" | "welcome" | "error"; question?: string; source?: string; error?: string; phase?: "compile" | "runtime" }, context = instructorContext.slice()) => {
+const presentInstructor = async (answer: string, example: string, controller: AbortController) => {
+    const { row, content, body } = append("answer", "", "AI", "", false);
+    row.setAttribute("aria-busy", "true");
+    const sample = document.createElement("pre");
+    sample.className = "instructor-code";
+    sample.hidden = true;
+    const sampleCode = document.createElement("code");
+    sample.append(sampleCode);
+    body.append(sample);
+    try {
+        await typewrite(content, sampleCode, answer, example, controller.signal, () => {
+            if (terminal.scrollHeight - terminal.scrollTop - terminal.clientHeight < 80) scroll();
+        });
+        remember("answer", answer, example);
+    } catch (error) {
+        row.remove();
+        throw error;
+    } finally { row.removeAttribute("aria-busy"); }
+};
+
+const canInitiate = () => ready && !busy && eventPending === undefined && !instructorRequest &&
+    !learnerTask && !autoPaused && !input.value.trim() && !document.hidden &&
+    !screenElement.contains(document.activeElement);
+
+const scheduleConversation = () => {
+    window.clearTimeout(idleTimer);
+    if (!canInitiate()) return;
+    idleTimer = window.setTimeout(() => {
+        if (canInitiate()) void askInstructor({ kind: "idle" });
+    }, idleDelay());
+};
+
+type InstructorDetails = { kind: "question" | "idle" | "error" | "review"; question?: string; source?: string; error?: string; phase?: "compile" | "runtime"; result?: string };
+const askInstructor = async (details: InstructorDetails, context = instructorContext.slice()) => {
     cancelInstructor();
     window.clearTimeout(idleTimer);
-    introduced = true;
     const controller = new AbortController();
     instructorRequest = { controller, kind: details.kind };
     try {
         const response = await fetch("/api/instructor", {
             method: "POST", headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ ...details, context }), signal: AbortSignal.any([controller.signal, AbortSignal.timeout(25_000)]),
+            body: JSON.stringify({ ...details, context, learnerTask, ...(details.kind === "idle" ? { idleTurn } : {}) }),
+            signal: AbortSignal.any([controller.signal, AbortSignal.timeout(25_000)]),
         });
         const result = await response.json();
         if (controller.signal.aborted) return;
-        if (!response.ok || !result.ok || typeof result.answer !== "string") append("error", result.error || "Instructor request failed.", "!");
-        else append("answer", result.answer, "AI", typeof result.code === "string" ? result.code : "");
+        if (!response.ok || !result.ok || typeof result.answer !== "string") {
+            autoPaused = true;
+            append("error", result.error || "Instructor request failed.", "!");
+        } else {
+            await presentInstructor(result.answer, typeof result.code === "string" ? result.code : "", controller);
+            if (controller.signal.aborted) return;
+            // The model explicitly retains or clears a concrete task after questions/reviews.
+            if (typeof result.learnerTask === "string") learnerTask = result.learnerTask.slice(0, 400);
+            if (details.kind === "idle") idleTurn++;
+        }
     } catch {
-        if (!controller.signal.aborted) append("error", "Could not reach the instructor. Please try again.", "!");
+        if (!controller.signal.aborted) {
+            autoPaused = true;
+            append("error", "Could not reach the instructor. Please try again.", "!");
+        }
     } finally {
         if (instructorRequest?.controller === controller) instructorRequest = undefined;
+        scheduleConversation();
     }
 };
 
-const scheduleIntroduction = () => {
-    window.clearTimeout(idleTimer);
-    if (introduced || !ready || busy || input.value.trim() || document.hidden) return;
-    idleTimer = window.setTimeout(() => {
-        if (!introduced && ready && !busy && !input.value.trim() && !document.hidden) void askInstructor({ kind: "welcome" });
-    }, 10_000);
+const greet = async () => {
+    const controller = new AbortController();
+    instructorRequest = { controller, kind: "welcome" };
+    try { await presentInstructor(welcomeMessage, "", controller); }
+    catch { /* A user submission or Clear can interrupt the greeting. */ }
+    finally {
+        if (instructorRequest?.controller === controller) instructorRequest = undefined;
+        scheduleConversation();
+    }
 };
 
 const activity = () => {
-    if (instructorRequest?.kind === "welcome") {
-        cancelInstructor();
-        introduced = false;
-    }
-    scheduleIntroduction();
+    if (instructorRequest?.kind === "idle") cancelInstructor();
+    scheduleConversation();
 };
 
 const explainError = (source: string, error: string, phase: "compile" | "runtime") => {
@@ -161,7 +213,7 @@ const finish = () => {
     label("TSX |> · sandbox ready");
     input.focus();
     scroll();
-    scheduleIntroduction();
+    scheduleConversation();
 };
 
 // Coded by OpenAI Codex. A watchdog can terminate the entire worker even if the guest misbehaves.
@@ -184,6 +236,7 @@ const startWorker = () => {
             if (screenElement.hidden || !screenElement.isConnected) output.append(screenElement);
             screen.render(event.data.frame as ViewFrame);
             if (followOutput) scroll();
+            activity();
         } else if (event.data.type === "event-result") {
             window.clearTimeout(eventWatchdog);
             eventPending = undefined;
@@ -197,6 +250,7 @@ const startWorker = () => {
                 explainError(lastProgramSource, result.error ?? "Event handler failed.", "runtime");
             }
             sendNextEvent();
+            scheduleConversation();
         } else if (event.data.type === "output") {
             const message = event.data.output as Output;
             if (message.kind === "clear") { output.replaceChildren(); clearViews(); }
@@ -217,6 +271,7 @@ const startWorker = () => {
             }
             finish();
             if (!result.ok) explainError(source, result.error ?? "Execution failed.", "runtime");
+            else if (learnerTask) void askInstructor({ kind: "review", source, result: result.value ?? "undefined" });
         } else if (event.data.type === "fatal") {
             window.clearTimeout(watchdog);
             accepted = [];
@@ -280,6 +335,7 @@ const submit = async () => {
         return;
     }
     const context = instructorContext.slice();
+    autoPaused = false;
     cancelInstructor();
     window.clearTimeout(idleTimer);
     window.clearTimeout(checkTimer);
@@ -380,10 +436,10 @@ input.addEventListener("keydown", event => {
 const clearScreen = () => {
     cancelInstructor();
     window.clearTimeout(idleTimer);
-    introduced = true;
     output.replaceChildren();
     clearViews();
     input.focus();
+    scheduleConversation();
 };
 document.querySelector("#clear")!.addEventListener("click", clearScreen);
 document.addEventListener("keydown", event => {
@@ -401,6 +457,9 @@ document.addEventListener("keydown", event => {
     }
 }, { capture: true });
 document.addEventListener("pointerdown", activity);
+document.addEventListener("input", activity);
+document.addEventListener("focusin", activity);
+terminal.addEventListener("wheel", activity, { passive: true });
 terminal.addEventListener("click", event => {
     const target = event.target as HTMLElement;
     if (!target.closest("textarea, input, button, a, .editor")) {
@@ -416,9 +475,13 @@ resetButton.addEventListener("click", () => {
     checkController?.abort();
     accepted = [];
     instructorContext = [];
+    learnerTask = "";
+    idleTurn = 0;
+    autoPaused = false;
     editor.classList.remove("has-errors");
     append("note", "Session reset. Variables and instructor context cleared; command history preserved.");
     startWorker();
 });
 redraw();
 startWorker();
+void greet();

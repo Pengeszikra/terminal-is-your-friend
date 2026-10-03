@@ -61,3 +61,6 @@ button:disabled { cursor: wait; opacity: .5; }
 
 #program-screen.is-centered:not([hidden]) { display: grid; align-items: safe center; justify-items: safe center; }
 #program-screen.is-centered code { min-height: 0; text-align: center; }
+
+/* Coded by OpenAI Codex. A terminal cursor follows progressively revealed instructor text. */
+.is-typing::after { content: "▌"; color: #95d4a4; }

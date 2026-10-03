@@ -7,7 +7,7 @@ import { askInstructor, validateQuestion, InstructorError } from "../server/inst
 import { createInstructorHandler } from "../server/instructor-handler.mjs";
 import { instructorQuestion } from "../.compiled/instructor.js";
 
-const payload = (sentences, code = "") => ({ status: "completed", output: [{ type: "message", content: [{ type: "output_text", text: JSON.stringify({ sentences, code }) }] }] });
+const payload = (sentences, code = "", learnerTask = "") => ({ status: "completed", output: [{ type: "message", content: [{ type: "output_text", text: JSON.stringify({ sentences, code, learnerTask }) }] }] });
 const options = result => ({ apiKey: "test-secret-not-a-real-key", fetchImpl: async () => Response.json(result) });
 
 test("only standalone single-line comments address the instructor", () => {
@@ -36,7 +36,9 @@ test("instructor request uses server credentials, bounded context, and a short s
     assert.equal(request.tools, undefined);
     assert.equal(request.text.format.strict, true);
     assert.equal(request.text.format.schema.properties.sentences.maxItems, 4);
-    assert.match(request.instructions, /outside programming/);
+    assert.match(request.instructions, /Keep the conversation focused/);
+    assert.match(request.instructions, /fictional surviving program/);
+    assert.match(request.instructions, /TSX means TypeScript source with JSX syntax/);
     assert.match(request.instructions, /Always answer in English/);
     assert.match(request.instructions, /pipeline operator is unsupported/);
     assert.match(request.instructions, /TIYF TEACHING KNOWLEDGE BASE/);
@@ -75,14 +77,14 @@ test("error explanations receive the complete source, diagnostic and failure pha
     assert.throws(() => validateQuestion({ kind: "unknown" }), error => error.status === 400);
 });
 
-test("idle introductions have their own task and code stays separate from short prose", async () => {
+test("startup introductions have their own task and code stays separate from short prose", async () => {
     const code = 'const text = "<img src=x onerror=alert(1)>";\ntext |> ((s: string) => s.length)';
     const answer = await askInstructor({ kind: "welcome" }, {
         apiKey: "test-key", fetchImpl: async (_, init) => {
             const request = JSON.parse(init.body);
             assert.match(request.instructions, /programming experience/);
             assert.equal(JSON.parse(request.input[0].content).kind, "welcome");
-            assert.deepEqual(request.text.format.schema.required, ["sentences", "code"]);
+            assert.deepEqual(request.text.format.schema.required, ["sentences", "code", "learnerTask"]);
             return Response.json(payload(["I am your TS/JS instructor.", "What programming experience do you have?"], code));
         },
     });
@@ -148,4 +150,43 @@ test("instructor HTTP adapter validates origin, method, size, and raw/parsed bod
     const failure = await invoke(local, { headers: { origin: "http://terminal.vercel.app" } });
     assert.equal(failure.status, 503);
     assert.equal(failure.body.error, "Instructor unavailable.");
+});
+
+
+test("idle conversations rotate angles and refuse to interrupt an exercise", async () => {
+    const prompts = [];
+    for (const idleTurn of [0, 1, 2, 3, 4, 5, 6, 7]) {
+        const answer = await askInstructor({ kind: "idle", idleTurn, learnerTask: "" }, {
+            apiKey: "test", fetchImpl: async (_, init) => {
+                prompts.push(JSON.parse(init.body).instructions);
+                return Response.json(payload(["A variable gives a value a name.", "What would you call this value?"]));
+            },
+        });
+        assert.equal(answer.learnerTask, "");
+    }
+    assert.equal(new Set(prompts).size, 8);
+    assert.match(prompts[3], /Suggested angle: JSDoc/);
+    assert.match(prompts[4], /Suggested angle: TSX/);
+    assert.throws(() => validateQuestion({ kind: "idle", learnerTask: "Write a counter." }), /Wait for the learner/);
+    for (const idleTurn of [-1, 1.5, "2", 1000001]) assert.throws(() => validateQuestion({ kind: "idle", idleTurn }), /Invalid conversation/);
+});
+
+test("exercise reviews carry bounded task state and can keep or finish the task", async () => {
+    for (const nextTask of ["Compute 40 + 2.", ""]) {
+        const answer = await askInstructor({ kind: "review", source: "40 + 2", result: "42", learnerTask: "Compute 40 + 2." }, {
+            apiKey: "test", fetchImpl: async (_, init) => {
+                const request = JSON.parse(init.body);
+                assert.equal(JSON.parse(request.input[0].content).learnerTask, "Compute 40 + 2.");
+                assert.match(request.instructions, /successfully executed code/);
+                return Response.json(payload(["You computed a value.", "Let us check the task."], "", nextTask));
+            },
+        });
+        assert.equal(answer.learnerTask, nextTask);
+    }
+    for (const patch of [{source: "x".repeat(8193)}, {result: "x".repeat(4001)}, {learnerTask: 1}, {learnerTask: "x".repeat(401)}]) {
+        assert.throws(() => validateQuestion({kind: "review", source: "42", result: "42", ...patch}));
+    }
+    for (const learnerTask of [null, 1, "x".repeat(401)]) {
+        await assert.rejects(askInstructor({question: "Help"}, options(payload(["One sentence.", "Another sentence."], "", learnerTask))), /invalid task state/);
+    }
 });
