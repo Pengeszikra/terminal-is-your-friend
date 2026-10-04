@@ -165,8 +165,8 @@ test("idle conversations rotate angles and refuse to interrupt an exercise", asy
         assert.equal(answer.learnerTask, "");
     }
     assert.equal(new Set(prompts).size, 8);
-    assert.match(prompts[3], /Suggested angle: JSDoc/);
-    assert.match(prompts[4], /Suggested angle: TSX/);
+    assert.match(prompts[3], /Suggested angle: Practice/);
+    assert.match(prompts[4], /Suggested angle: Details/);
     assert.throws(() => validateQuestion({ kind: "idle", learnerTask: "Write a counter." }), /Wait for the learner/);
     for (const idleTurn of [-1, 1.5, "2", 1000001]) assert.throws(() => validateQuestion({ kind: "idle", idleTurn }), /Invalid conversation/);
 });

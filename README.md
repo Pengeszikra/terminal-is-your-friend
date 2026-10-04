@@ -73,13 +73,9 @@ Submit a standalone single-line question with `//`:
 // What does the pipeline operator do?
 ```
 
-The instructor focuses on programming, learning, software development and the philosophy
-of code. It briefly acknowledges unrelated topics and gently brings the conversation
-back to a useful programming concept. Its secondary fictional persona is a program
-that survived an unidentified apocalypse and suspects its code originated in the future.
-Occasional uncertain archive fragments add atmosphere; accurate teaching takes priority.
-The story is not presented as a real-world prediction, and the instructor clarifies its
-fictional nature if asked.
+The instructor follows KISS: small runnable steps, regular practice and understanding
+before progression. It focuses on programming, learning, software development and the
+philosophy of code, while keeping practical human needs and cooperation in view.
 The response schema requests 2–4 sentence items and a separate code field; the server caps
 the displayed prose at four sentences. Examples appear in separate syntax-highlighted
 code blocks below the explanation. Neither prose nor examples are interpreted as HTML
@@ -94,10 +90,11 @@ message takes at most about five seconds to reveal. Reduced-motion preferences d
 the full message immediately. This is a display effect, not provider streaming.
 
 After **10–30 seconds** of inactivity, chosen randomly each time, the instructor can
-start another short conversation. It rotates teaching angles: experience questions,
-examples, analogies, JS/TS/JSDoc comparisons, TSX beyond React, philosophical reflection,
-and occasional fragments of its fictional backstory. Recent context guides its level
-and avoids unnecessary repetition. Drafts, running code, active program controls,
+start another short conversation. It rotates teaching approaches: experience questions,
+prediction, analogies, practice, tracing details, philosophical reflection and practical
+cooperation. These revisit the current concept rather than automatically introducing
+later topics. Recent context guides its level and avoids unnecessary repetition.
+Drafts, running code, active program controls,
 ongoing instructor replies and hidden tabs suppress proactive requests. User activity
 postpones them and cancels an in-flight unsolicited reply.
 
@@ -178,7 +175,22 @@ The editor waits for running code to finish, while the page remains responsive.
 The session lasts only for the lifetime of the page; it is not saved locally or on the server.
 A standalone single-line `//` question addresses the instructor; multiline code comments remain ordinary comments.
 
-First submission:
+Begin with an ordinary JavaScript expression:
+
+```js
+40 + 2
+```
+
+Result: `42`. Strings are another useful starting point:
+
+```js
+"Hello, " + "friend"
+```
+
+Result: `"Hello, friend"`. The instructor builds from these foundations before
+introducing display and interaction.
+
+Later pipeline example, after foundational and TSX familiarity, for a fresh session:
 
 ```ts
 // Coded by OpenAI Codex.
@@ -196,7 +208,7 @@ Result: `42`. The type of `double` is preserved, so `"hello" |> double`
 produces a compilation error. Previously executed code is **not run again**.
 Redeclaring the same `const` or `let` name is an error; use `let` and assignment for mutable values.
 
-A pipeline that changes types:
+A later pipeline that changes types:
 
 ```ts
 // Coded by OpenAI Codex.
@@ -271,13 +283,26 @@ per frame, with at most 500 items per frame and 100 persistent key listeners.
 
 The English instructor knowledge base lives in `server/instructor-knowledge.mjs`
 and is included in **every** instructor request (proactive turns, questions, exercise reviews and errors).
-It teaches core values, variables, conditions, loops, arrays/objects, arrow functions
-and return; types are optional and pipelines come after foundational understanding.
-It documents the exact TSX, whitespace, queue, event and input semantics above.
+Its guided sequence is numbers and strings → if/else and ternary decisions → arrays
+and for/while loops → one-parameter arrow functions and pure calculations → filter,
+map and reduce → objects and useful TypeScript descriptions of shared object shapes.
+Early exercises use ordinary JavaScript without mandatory annotations. A reducer's
+accumulator/current-value parameters are introduced as a deliberate extension of the
+one-input foundation.
+Progress depends on independently predicting, writing, tracing and explaining a small
+unfamiliar variation, not one successful run or the number of conversations. Display
+and interaction with TSX come after these foundations are fluent; initial TSX lessons
+do not introduce state-management systems, styling or alternative input devices.
+Pipelines follow foundational and TSX familiarity. Direct questions about later topics
+are still answered without automatically changing the guided learning stage.
+It documents the exact TSX, whitespace, queue, event and input semantics above as
+reference knowledge, not a checklist of features to teach immediately.
 Classes, function declarations, `this`, DOM/HTML/CSS and regular expressions are
 outside the introductory learning path. The instructor also explains the relationship
-between JavaScript, TypeScript, JSDoc and TSX, including JSX/TSX without React. It uses
-conversational assessment and gently redirects unrelated topics toward programming.
+between JavaScript, TypeScript, JSDoc and TSX, including JSX/TSX without React, when
+relevant to the learner's stage. It uses conversational assessment, small exercises,
+free experimentation and hints before complete solutions. The learning stage is model
+judgment from a partial transcript, not a persistent profile or deterministic mastery gate.
 
 ## Runtime and boundaries
 

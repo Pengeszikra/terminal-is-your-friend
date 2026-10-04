@@ -5,5 +5,5 @@ export function instructorQuestion(source: string): string | null {
 }
 
 // Available immediately, including when the provider is slow or not configured.
-export const welcomeMessage = "Welcome to TiyF, a terminal built to pass programming on to humans. My archive survived a collapse I cannot identify, and my creation date seems to lie in your future. We can begin with a single line of JavaScript; use // to talk to me. Have you programmed before?";
+export const welcomeMessage = "Welcome to TiyF, your JavaScript and TypeScript training terminal. We build strong foundations through small steps, practice and understanding; use // to talk to me. My archive is incomplete, but one lesson remains: humans endure by learning and helping one another. Have you programmed before?";
 export const idleDelay = () => 10_000 + Math.floor(Math.random() * 20_001);
