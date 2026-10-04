@@ -20,7 +20,7 @@ export async function checkViews(page, run) {
     for(let i=1; i<frames.length; i++) assert.ok(frames[i].time - frames[i-1].time >= 150, 'Frames must play over time, not collapse into the final frame');
     assert.match(await page.locator('.entry-result').last().innerText(), /counting/);
     assert.equal(await screen.locator('code').count(), 1);
-    const layout = await screen.evaluate(element => ({ height: element.clientHeight, line: parseFloat(getComputedStyle(element.firstChild).lineHeight), whitespace: getComputedStyle(element.firstChild).whiteSpace }));
+    const layout = await screen.evaluate(element => ({ height: element.clientHeight, width: element.getBoundingClientRect().width, line: parseFloat(getComputedStyle(element.firstChild).lineHeight), whitespace: getComputedStyle(element.firstChild).whiteSpace }));
     assert.ok(Math.abs(layout.height - 7 * layout.line) <= 1);
     assert.equal(layout.whitespace, 'pre');
     assert.equal(await screen.evaluate(element => element.parentElement.id), 'output');
@@ -47,9 +47,25 @@ export async function checkViews(page, run) {
     assert.ok(Math.abs(centered.x) < 1 && Math.abs(centered.y) < 1, 'center aligns on both axes');
     assert.equal(centered.inverse, true);
     assert.ok(centered.radius > 0 && centered.radius < 8);
+    await run('<view small center><button onClick={() => {}}>Small</button></view>');
+    await screen.getByRole('button', { name: 'Small', exact: true }).waitFor();
+    const small = await screen.evaluate(element => {
+        const outer = element.getBoundingClientRect();
+        const inner = element.querySelector('code').getBoundingClientRect();
+        return { height: element.clientHeight, width: outer.width,
+            x: inner.x + inner.width / 2 - outer.x - outer.width / 2,
+            y: inner.y + inner.height / 2 - outer.y - outer.height / 2 };
+    });
+    assert.ok(Math.abs(small.height - 3 * layout.line) <= 1, 'small is three lines high');
+    assert.ok(Math.abs(small.width - layout.width * 2 / 3) <= 1, 'small is two-thirds of a normal view width');
+    assert.ok(Math.abs(small.x) < 1 && Math.abs(small.y) < 1, 'small combines with center');
     await run('<view center={false}>Left</view>');
     await page.waitForFunction(() => document.querySelector('#program-screen').textContent === 'Left');
     assert.equal(await screen.evaluate(element => element.classList.contains('is-centered')), false);
+    const restored = await screen.evaluate(element => ({ height: element.clientHeight, width: element.getBoundingClientRect().width, small: element.classList.contains('is-small') }));
+    assert.equal(restored.small, false);
+    assert.equal(restored.height, layout.height);
+    assert.ok(Math.abs(restored.width - layout.width) <= 1, 'A normal frame restores full width');
 
     await run('<view>\n\n\n          Middle\n\n\n</view>');
     await page.waitForFunction(() => document.querySelector('#program-screen').textContent.includes('Middle'));
@@ -110,5 +126,5 @@ export async function checkViews(page, run) {
     await screen.getByRole('button', { name: 'Continue' }).waitFor();
     await screen.scrollIntoViewIfNeeded();
     await page.screenshot({ path: 'test-results/terminal-views-mobile.png' });
-    console.log('TSX browser checks passed: FIFO playback, inline scrolling, optional centering, inverse buttons, seven lines, whitespace, clicks, input lifecycle, literal text, persistent keys, editor isolation, clear and callback reset.');
+    console.log('TSX browser checks passed: FIFO playback, inline scrolling, optional centering, compact and normal dimensions, inverse buttons, whitespace, clicks, input lifecycle, literal text, persistent keys, editor isolation, clear and callback reset.');
 }

@@ -32,6 +32,26 @@ test("default TSX accepts plain JS, optional parameter types, and still checks e
     } finally { sandbox.dispose(); }
 });
 
+test("small views preserve their own size through the queue and reject nonboolean props", async () => {
+    const sandbox = await createSandbox(() => {});
+    try {
+        await run(sandbox, 'let compact = true; <view small center>First</view>; <view small={false}>Second</view>; <view>Third</view>; <view small={compact}>Fourth</view>;');
+        const frames = Array.from({ length: 4 }, () => sandbox.nextFrame());
+        assert.deepEqual(frames.map(({ small, center, children }) => ({ small, center, children })), [
+            { small: true, center: true, children: ['First'] },
+            { small: false, center: false, children: ['Second'] },
+            { small: false, center: false, children: ['Third'] },
+            { small: true, center: false, children: ['Fourth'] },
+        ]);
+        const invalid = sandbox.evaluate('__tiyf.jsx("view", {small: "yes"}, "bad")');
+        assert.equal(invalid.ok, false);
+        assert.match(invalid.error, /small prop must be a boolean/);
+        for (const source of ['<view small="yes">no</view>', '<view small={1}>no</view>', '<button small onClick={() => 1}>no</button>']) {
+            assert.equal((await compileInput({ source, history: [] })).ok, false, source);
+        }
+    } finally { sandbox.dispose(); }
+});
+
 test("countdown snapshots queue in order, with a separate explicit return and no replay", async () => {
     const sandbox = await createSandbox(() => {});
     try {
