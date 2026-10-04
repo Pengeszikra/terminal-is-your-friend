@@ -93,7 +93,8 @@ try {
     await page.waitForFunction(() => !document.querySelector("#input").readOnly);
     assert.equal(questions.length, 1);
     assert.equal(questions[0].question, "Why did my code fail?");
-    assert.ok(questions[0].context.some(entry => entry.kind === "error" && entry.text.includes("not assignable")));
+    assert.ok(questions[0].codeState.executions.some(entry => entry.status === "error" && entry.error.includes("not assignable")));
+    assert.ok(questions[0].context.every(entry => ["question", "answer"].includes(entry.kind)));
     assert.equal(await page.locator(".entry-command").count(), commandCount);
     assert.match(await page.locator(".entry-answer").last().innerText(), /pipeline/);
     assert.equal(await page.locator("#output img").count(), 0);
@@ -157,7 +158,9 @@ try {
     await page.locator("#reset").click();
     await page.waitForFunction(() => !document.querySelector("#input").disabled);
     await run("// What can I try next?");
-    assert.ok(questions.at(-1).context.every(entry => entry.kind === "note"));
+    assert.deepEqual(questions.at(-1).context, []);
+    assert.deepEqual(questions.at(-1).memory, { note: "", direction: "", assessment: "" });
+    assert.deepEqual(questions.at(-1).codeState, { executions: [], variables: "cleared" });
     await page.locator("#clear").click();
     await run("const double = (n: number) => n * 2;");
     await run("[1, 2, 3] |> ((values: number[]) => values.map(double))");
