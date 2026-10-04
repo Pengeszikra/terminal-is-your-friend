@@ -37,9 +37,19 @@ test("every mainline merge increments once; rebuilds and shallow clones keep the
         assert.equal(releaseVersion(repo), "26-10-02", "Rebuilding does not increment");
         git(directory, "clone", "--depth=1", pathToFileURL(repo).href, shallow);
         const head = git(shallow, "rev-parse", "HEAD");
-        assert.equal(releaseVersion(shallow), "26-10-02");
+        assert.equal(releaseVersion(shallow, { repositoryUrl: pathToFileURL(repo).href }), "26-10-02");
         assert.equal(git(shallow, "rev-parse", "HEAD"), head, "Fetching history does not move HEAD");
-        assert.equal(git(shallow, "rev-parse", "--is-shallow-repository"), "false");
+        assert.equal(git(shallow, "rev-parse", "--is-shallow-repository"), "true", "Original checkout is untouched");
+        // Reproduce Vercel's source-only checkout, then advance the remote main.
+        const deployedHead = git(repo, "rev-parse", "HEAD");
+        git(repo, "switch", "-c", "feature-3");
+        git(repo, "commit", "--allow-empty", "-m", "Newer feature");
+        git(repo, "switch", "main");
+        git(repo, "merge", "--no-ff", "feature-3", "-m", "Merge 3");
+        assert.equal(releaseVersion(directory, { commitSha: deployedHead, repositoryUrl: pathToFileURL(repo).href }), "26-10-02", "Source-only rebuild uses the deployed SHA, not latest main");
+        assert.equal(releaseVersion(directory, { commitSha: git(repo, "rev-parse", "HEAD"), repositoryUrl: pathToFileURL(repo).href }), "26-10-03");
+        assert.throws(() => releaseVersion(directory, { commitSha: "" }), /VERCEL_GIT_COMMIT_SHA/);
+        assert.throws(() => releaseVersion(directory, { commitSha: "main" }), /VERCEL_GIT_COMMIT_SHA/);
     } finally { rmSync(directory, { recursive: true, force: true }); }
 });
 

@@ -278,8 +278,12 @@ No bot commit, counter file, secret or extra deployment is needed. The generated
 HTML contains the version in its header and `application-version` meta tag.
 The npm package's SemVer field is separate from this application's release label.
 
-Vercel uses shallow clones, so the script fetches missing history from `origin`
-with `git fetch --unshallow --no-tags` when needed. It keeps the checked-out commit
-fixed. A complete local clone needs no network access. Builds fail with a clear
-error if history is unavailable rather than publish an incorrect release number;
-source ZIPs must be replaced with a Git clone for this workflow.
+Vercel may provide source files without `.git`. For source-only or shallow checkouts,
+the script fetches the exact deployment commit's history from this public GitHub
+repository into a temporary bare repository. `VERCEL_GIT_COMMIT_SHA` identifies
+the deployed commit when `.git` is absent; Vercel supplies it automatically. No
+GitHub token is needed. The temporary history is removed after reading it, and
+the original checkout stays untouched. A complete local clone needs no network.
+Rebuilds stay pinned to their original commit even if `main` advances. Builds fail
+with a clear error if the commit or its history is unavailable; a source ZIP needs
+the matching `VERCEL_GIT_COMMIT_SHA`, or can be replaced with a Git clone.
