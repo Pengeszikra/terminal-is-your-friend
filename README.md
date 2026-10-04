@@ -124,10 +124,23 @@ the error message (up to 16,000 characters), and whether compilation or executio
 It is prompted to explain the likely cause and correction rather than repeat the error.
 Explanations run in the background, so the learner can keep editing and executing code.
 
-Each request also includes up to 12 recent terminal entries
-(at most 1,200 characters each) are sent as context, including code, results, errors, and
-previous questions and answers. This is a partial transcript, not the full runtime state.
-`Reset session` clears that context; `Clear` and **Ctrl+L** only clear visible output.
+Each request carries a small, separate teaching memory instead of a mixed terminal transcript:
+
+- `memory.note`: a free-form instructor notebook, up to 500 characters, covering demonstrated knowledge, learning preferences and difficulties.
+- `memory.direction` and `memory.assessment`: one short sentence each (up to 200 characters) about the discussion's direction and the learner's understanding.
+- `context`: the latest eight question/answer messages (roughly four exchanges), up to 1,200 characters each. Discussed examples are separate, with a combined 2,000-character budget; they are never labelled as executed code.
+- `codeState`: the latest three submitted terminal attempts plus the latest callback event since the last attempt, with success/error/not-run status, compilation/runtime phase, return value, console output and error. Source is limited to 2,000 characters per record; results/output to 1,000 each and errors to 1,200. Truncated records are marked. Event records do not guess which submission defined the callback. Current error/review requests still carry complete source separately.
+
+The instructor refreshes the notebook in its normal structured response, without an extra
+summarization call. It preserves earlier useful observations as old chat leaves the window;
+terminal facts take precedence over its notes. Invalid/missing notebook updates and refusals
+retain the previous memory. Only fully presented, uncancelled replies commit new memory.
+The terminal also tracks whether variables were preserved or cleared, so historical code
+is not confused with current runtime state. This is bounded evidence, not a VM snapshot.
+Notes and recent state live only in the current page's memory: a reload or `Reset session`
+clears them; `Clear` and **Ctrl+L** only clear visible output. No account or database is needed.
+The fixed teaching instructions still accompany every request; this bounds conversation
+growth rather than removing all repeated input tokens.
 Clearing, resetting, or submitting again cancels pending instructor output, so stale replies
 do not reappear after a clear or attach to a newer submission.
 The Responses API request uses `store: false`; Groq's data policies still apply.

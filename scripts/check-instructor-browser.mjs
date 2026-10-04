@@ -13,11 +13,12 @@ export async function checkInstructor(browser, base) {
     await page.route("**/api/instructor", async route => {
         const data = route.request().postDataJSON();
         requests.push(data);
+        const memory = { note: `Notebook ${requests.length}`, direction: "Explore values.", assessment: "Understanding still being assessed." };
         if (delayed) await new Promise(resolve => { release = resolve; });
         let learnerTask = "";
         if (data.question?.includes("task") || (data.kind === "review" && data.result !== "42")) learnerTask = "Compute 40 + 2.";
         await route.fulfill({ status: fail ? 503 : 200, json: fail ? { ok: false, error: "Instructor unavailable." } : {
-            ok: true, learnerTask,
+            ok: true, learnerTask, memory,
             language: data.question?.includes('magyarul') ? 'hu' : data.language ?? 'en',
             answer: data.kind === "review" ? "I checked the result against our exercise. We can decide what comes next." : "Let us look at a value from another angle. How might a useful name make its purpose easier to see?",
             code: 'const label = "<img src=x>";',
@@ -58,7 +59,10 @@ export async function checkInstructor(browser, base) {
         await page.clock.runFor(20000);
         await page.waitForFunction(() => document.querySelectorAll('.entry-answer').length === 3);
         assert.equal(requests[1].idleTurn, 1, 'Idle conversation repeats with a new angle');
+        assert.equal(requests[1].memory.note, 'Notebook 1', 'The completed reply updates the next request notebook');
+        assert.deepEqual(requests[1].codeState.executions, [], 'Discussed code is not terminal execution');
         await page.clock.runFor(6000);
+        assert.doesNotMatch(await page.locator('#output').innerText(), /Notebook/, 'The notebook is not displayed');
 
         const submit = async source => {
             const before = requests.length;
@@ -80,6 +84,9 @@ export async function checkInstructor(browser, base) {
         await submit('1 + 1');
         assert.equal(requests.at(-1).kind, 'review');
         assert.equal(requests.at(-1).learnerTask, 'Compute 40 + 2.');
+        assert.equal(requests.at(-1).codeState.executions.at(-1).source, '1 + 1');
+        assert.equal(requests.at(-1).codeState.executions.at(-1).status, 'success');
+        assert.ok(requests.at(-1).memory.note, 'Clear retains teaching memory');
         await page.clock.runFor(60000);
         assert.equal(requests.length, count + 1, 'An incomplete attempt preserves the task');
         await submit('40 + 2');
@@ -90,12 +97,20 @@ export async function checkInstructor(browser, base) {
         assert.equal(requests.at(-1).kind, 'idle', 'Completed exercises allow conversation again');
         await page.clock.runFor(6000);
 
+        // Many new turns evict old chat without evicting the notebook or executed code.
+        for (let i = 0; i < 6; i++) await submit(`// Explain value ${i}`);
+        assert.equal(requests.at(-1).context.length, 8);
+        assert.equal(requests.at(-1).codeState.executions.at(-1).source, '40 + 2');
+        assert.ok(requests.at(-1).context.every(entry => ['question', 'answer'].includes(entry.kind)));
+        assert.ok(requests.at(-1).context.some(entry => entry.example), 'Discussed examples have their own field');
+
         // User activity aborts an in-flight unsolicited response without changing a draft.
         delayed = true;
         await input.press('ArrowLeft');
         await page.clock.runFor(20000);
         for (let tries = 0; !release && tries < 100; tries++) await new Promise(resolve => setTimeout(resolve, 10));
         assert.ok(release, "The delayed idle request started");
+        const memoryBeforeCancel = requests.at(-1).memory;
         const before = await page.locator('#output').innerText();
         await input.fill('draft');
         release();
@@ -103,6 +118,8 @@ export async function checkInstructor(browser, base) {
         await page.clock.runFor(6000);
         assert.equal(await input.inputValue(), 'draft');
         assert.equal(await page.locator('#output').innerText(), before);
+        await submit('// Continue after cancellation');
+        assert.deepEqual(requests.at(-1).memory, memoryBeforeCancel, 'An aborted reply cannot update memory');
 
         await input.fill('');
         await page.evaluate(() => {
@@ -123,7 +140,9 @@ export async function checkInstructor(browser, base) {
         await page.clock.runFor(60000);
         assert.equal(requests.length, failureCount, 'Provider failure pauses automatic retries');
         fail = false;
+        const memoryBeforeFailure = requests.at(-1).memory;
         await submit('// Magyarázd el magyarul');
+        assert.deepEqual(requests.at(-1).memory, memoryBeforeFailure, 'Provider failure retains memory');
         await input.press('ArrowLeft');
         await page.clock.runFor(20000);
         await page.locator('.entry-answer[aria-busy="true"]').waitFor();
@@ -147,7 +166,9 @@ export async function checkInstructor(browser, base) {
         await page.locator('.entry-answer[aria-busy="true"]').waitFor();
         assert.equal(requests.at(-1).learnerTask, '');
         assert.equal(requests.at(-1).language, 'en', 'Reset restores the initial reply language');
-        assert.ok(requests.at(-1).context.every(entry => entry.kind === 'note'));
+        assert.deepEqual(requests.at(-1).context, []);
+        assert.deepEqual(requests.at(-1).memory, { note: '', direction: '', assessment: '' });
+        assert.deepEqual(requests.at(-1).codeState, { executions: [], variables: 'cleared' });
         await page.clock.runFor(6000);
         console.log('Instructor browser checks passed: immediate typewriter greeting, recurring idle turns, drafts, task/review lifecycle, cancellation, hidden tabs, failure backoff, reset and highlighted code.');
     } finally { await page.close(); }

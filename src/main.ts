@@ -4,6 +4,7 @@ import type { ViewFrame, ViewEvent } from "./view-runtime.js";
 import { highlight } from "./highlight.js";
 import { typewrite } from "./typewriter.js";
 import { instructorQuestion, welcomeMessage, idleDelay } from "./instructor.js";
+import { InstructorSession } from "./instructor-memory.js";
 import type { Evaluation, Output } from "./sandbox.js";
 
 const input = document.querySelector<HTMLTextAreaElement>("#input")!;
@@ -31,7 +32,8 @@ let watchdog = 0;
 let requestId = 0;
 let checkController: AbortController | undefined;
 let pending: { id: number; source: string } | undefined;
-let instructorContext: { kind: string; text: string }[] = [];
+let instructorSession = new InstructorSession();
+let executionOutput = "";
 let idleTimer = 0;
 let learnerTask = "";
 let instructorLanguage = "en";
@@ -45,11 +47,12 @@ const sendNextEvent = () => {
     eventPending = ++requestId;
     input.readOnly = true;
     const event = eventQueue.shift()!;
+    executionOutput = "";
     eventWatchdog = window.setTimeout(() => {
         accepted = [];
         append("error", "Event handler stopped after 3 seconds. Variables cleared.", "!");
         startWorker();
-        explainError(lastProgramSource, "Event handler exceeded the execution limit.", "runtime");
+        explainError(lastProgramSource, "Event handler exceeded the execution limit.", "runtime", "event");
     }, 3000);
     worker.postMessage({ type: "event", id: eventPending, event });
 };
@@ -71,8 +74,7 @@ const clearViews = () => {
 const scroll = () => { terminal.scrollTop = terminal.scrollHeight; };
 const label = (text: string) => { status.textContent = text; };
 const remember = (kind: string, text: string, example = "") => {
-    instructorContext.push({ kind, text: (text + (example ? "\n" + example : "")).slice(0, 1200) });
-    if (instructorContext.length > 12) instructorContext.shift();
+    instructorSession.remember(kind, text, example);
 };
 const append = (kind: string, text: string, marker = "", example = "", record = true) => {
     if (record) remember(kind, text, example);
@@ -145,7 +147,7 @@ const scheduleConversation = () => {
 };
 
 type InstructorDetails = { kind: "question" | "idle" | "error" | "review"; question?: string; source?: string; error?: string; phase?: "compile" | "runtime"; result?: string };
-const askInstructor = async (details: InstructorDetails, context = instructorContext.slice()) => {
+const askInstructor = async (details: InstructorDetails, context = instructorSession.context.slice()) => {
     cancelInstructor();
     window.clearTimeout(idleTimer);
     const controller = new AbortController();
@@ -153,7 +155,8 @@ const askInstructor = async (details: InstructorDetails, context = instructorCon
     try {
         const response = await fetch("/api/instructor", {
             method: "POST", headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ ...details, context, learnerTask, language: instructorLanguage, ...(details.kind === "idle" ? { idleTurn } : {}) }),
+            body: JSON.stringify({ ...details, context, memory: instructorSession.memory, codeState: instructorSession.codeState,
+                learnerTask, language: instructorLanguage, ...(details.kind === "idle" ? { idleTurn } : {}) }),
             signal: AbortSignal.any([controller.signal, AbortSignal.timeout(25_000)]),
         });
         const result = await response.json();
@@ -164,6 +167,7 @@ const askInstructor = async (details: InstructorDetails, context = instructorCon
         } else {
             await presentInstructor(result.answer, typeof result.code === "string" ? result.code : "", controller);
             if (controller.signal.aborted) return;
+            instructorSession.updateMemory(result.memory);
             // The model explicitly retains or clears a concrete task after questions/reviews.
             if (typeof result.learnerTask === "string") learnerTask = result.learnerTask.slice(0, 400);
             if (typeof result.language === "string") instructorLanguage = result.language;
@@ -196,7 +200,9 @@ const activity = () => {
     scheduleConversation();
 };
 
-const explainError = (source: string, error: string, phase: "compile" | "runtime") => {
+const explainError = (source: string, error: string, phase: "compile" | "runtime", trigger: "submission" | "event" = "submission") => {
+    instructorSession.record({ source: trigger === "event" ? "" : source, error, phase, status: "error", trigger,
+        output: executionOutput }, phase === "runtime" ? "cleared" : instructorSession.codeState.variables);
     void askInstructor({ kind: "error", source, error, phase });
 };
 
@@ -249,18 +255,24 @@ const startWorker = () => {
                 clearViews();
                 append("error", result.error ?? "Event handler failed.", "!");
                 append("note", "Runtime reset after the error. Variables and event listeners were cleared.");
-                explainError(lastProgramSource, result.error ?? "Event handler failed.", "runtime");
-            }
+                explainError(lastProgramSource, result.error ?? "Event handler failed.", "runtime", "event");
+            } else instructorSession.record({ source: "", status: "success", phase: "runtime", trigger: "event", output: executionOutput }, "preserved");
             sendNextEvent();
             scheduleConversation();
         } else if (event.data.type === "output") {
             const message = event.data.output as Output;
             if (message.kind === "clear") { output.replaceChildren(); clearViews(); }
-            else append(message.kind, message.text);
+            else {
+                executionOutput += (executionOutput ? "\n" : "") + `${message.kind}: ${message.text}`;
+                if (executionOutput.length > 1000) executionOutput = "[truncated]\n" + executionOutput.slice(-988);
+                append(message.kind, message.text);
+            }
         } else if (event.data.type === "result" && pending && pending.id === event.data.id) {
             const result = event.data.result as Evaluation;
             const source = pending.source;
             if (result.ok) {
+                instructorSession.record({ source, status: "success", phase: "runtime", trigger: "submission",
+                    result: result.value ?? "undefined", output: executionOutput }, "preserved");
                 accepted.push(pending.source);
                 append("result", result.value ?? "undefined", "←");
             } else {
@@ -336,7 +348,7 @@ const submit = async () => {
         append("error", "Enter a question of up to 4,000 characters after //.", "!");
         return;
     }
-    const context = instructorContext.slice();
+    const context = instructorSession.context.slice();
     autoPaused = false;
     cancelInstructor();
     window.clearTimeout(idleTimer);
@@ -360,6 +372,7 @@ const submit = async () => {
         return;
     }
     label("Checking TypeScript…");
+    executionOutput = "";
     try {
         const response = await fetch("/api/compile", {
             method: "POST", headers: { "Content-Type": "application/json" },
@@ -371,6 +384,7 @@ const submit = async () => {
             append("error", error, "!");
             finish();
             if (response.ok) explainError(source, error, "compile");
+            else instructorSession.record({ source, error, status: "not-run", phase: "compile", trigger: "submission" }, instructorSession.codeState.variables);
             return;
         }
         lastProgramSource = source;
@@ -386,7 +400,9 @@ const submit = async () => {
         }, 3_000);
         worker.postMessage({ type: "run", id: pending.id, javascript: compiled.javascript });
     } catch (error) {
-        append("error", error instanceof Error ? error.message : "Compiler connection failed.", "!");
+        const message = error instanceof Error ? error.message : "Compiler connection failed.";
+        instructorSession.record({ source, error: message, status: "not-run", phase: "compile", trigger: "submission" }, instructorSession.codeState.variables);
+        append("error", message, "!");
         finish();
     }
 };
@@ -476,7 +492,9 @@ resetButton.addEventListener("click", () => {
     window.clearTimeout(checkTimer);
     checkController?.abort();
     accepted = [];
-    instructorContext = [];
+    instructorSession = new InstructorSession();
+    lastProgramSource = "";
+    executionOutput = "";
     learnerTask = "";
     instructorLanguage = "en";
     idleTurn = 0;
