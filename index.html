@@ -5,6 +5,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#101411">
+  <meta name="application-version" content="__TIYF_VERSION__">
   <meta name="description" content="A small TypeScript terminal with the pipeline operator and an isolated JavaScript sandbox.">
   <title>Terminal Is Your Friend</title>
   <link rel="icon" type="image/svg+xml" href="/favicon.svg">
@@ -14,7 +15,10 @@
 <body class="bg-[#101411] text-[#d6e0d7] min-h-dvh font-mono antialiased">
   <main class="mx-auto flex h-dvh max-w-6xl flex-col px-4 sm:px-8">
     <header class="flex shrink-0 select-none flex-wrap items-center justify-between gap-3 border-b border-[#2b352d] py-5 sm:py-7">
-      <h1 class="text-base font-semibold tracking-tight sm:text-lg"><span class="text-[#95d4a4]">|&gt;</span> Terminal Is Your Friend</h1>
+      <div class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+        <h1 class="text-base font-semibold tracking-tight sm:text-lg"><span class="text-[#95d4a4]">|&gt;</span> Terminal Is Your Friend</h1>
+        <span id="app-version" aria-label="Application version" class="text-xs text-[#8f9e92]">__TIYF_VERSION__</span>
+      </div>
       <div class="flex items-center gap-5 text-sm">
         <button id="clear" type="button" class="text-[#a9b6ac] hover:text-white focus-visible:outline-2 focus-visible:outline-[#95d4a4]">Clear</button>
         <button id="reset" type="button" class="text-[#a9b6ac] hover:text-white focus-visible:outline-2 focus-visible:outline-[#95d4a4]">Reset session</button>
