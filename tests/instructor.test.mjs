@@ -7,7 +7,7 @@ import { askInstructor, validateQuestion, InstructorError } from "../server/inst
 import { createInstructorHandler } from "../server/instructor-handler.mjs";
 import { instructorQuestion } from "../.compiled/instructor.js";
 
-const payload = (sentences, code = "", learnerTask = "") => ({ status: "completed", output: [{ type: "message", content: [{ type: "output_text", text: JSON.stringify({ sentences, code, learnerTask }) }] }] });
+const payload = (sentences, code = "", learnerTask = "", language = "en") => ({ status: "completed", output: [{ type: "message", content: [{ type: "output_text", text: JSON.stringify({ sentences, code, learnerTask, language }) }] }] });
 const options = result => ({ apiKey: "test-secret-not-a-real-key", fetchImpl: async () => Response.json(result) });
 
 test("only standalone single-line comments address the instructor", () => {
@@ -35,11 +35,11 @@ test("instructor request uses server credentials, bounded context, and a short s
     assert.deepEqual(request.reasoning, { effort: "low" });
     assert.equal(request.tools, undefined);
     assert.equal(request.text.format.strict, true);
-    assert.equal(request.text.format.schema.properties.sentences.maxItems, 4);
+    assert.equal(request.text.format.schema.properties.sentences.maxItems, 7);
     assert.match(request.instructions, /Keep the conversation focused/);
     assert.match(request.instructions, /fictional surviving program/);
     assert.match(request.instructions, /TSX means TypeScript source with JSX syntax/);
-    assert.match(request.instructions, /Always answer in English/);
+    assert.match(request.instructions, /Default to English until the learner/);
     assert.match(request.instructions, /pipeline operator is unsupported/);
     assert.match(request.instructions, /TIYF TEACHING KNOWLEDGE BASE/);
     assert.match(request.instructions, /250 ms/);
@@ -84,7 +84,7 @@ test("startup introductions have their own task and code stays separate from sho
             const request = JSON.parse(init.body);
             assert.match(request.instructions, /programming experience/);
             assert.equal(JSON.parse(request.input[0].content).kind, "welcome");
-            assert.deepEqual(request.text.format.schema.required, ["sentences", "code", "learnerTask"]);
+            assert.deepEqual(request.text.format.schema.required, ["sentences", "code", "learnerTask", "language"]);
             return Response.json(payload(["I am your TS/JS instructor.", "What programming experience do you have?"], code));
         },
     });
@@ -96,10 +96,30 @@ test("startup introductions have their own task and code stays separate from sho
 });
 
 test("instructor caps sentences and reports refusals without executing output", async () => {
-    const answer = await askInstructor({ question: "Explain." }, options(payload(["One. Two. Three.", "Four. Five. Six."])));
-    assert.equal(answer.answer, "One. Two. Three. Four.");
+    const answer = await askInstructor({ question: "Explain." }, options(payload(["One. Two. Three. Four.", "Five. Six. Seven. Eight."])));
+    assert.equal(answer.answer, "One. Two. Three. Four. Five. Six. Seven.");
     const refusal = await askInstructor({ question: "Explain." }, options({ status: "completed", output: [{ type: "message", content: [{ type: "refusal", refusal: "I cannot help with that. I can suggest a safe alternative." }] }] }));
     assert.match(refusal.answer, /safe alternative/);
+});
+
+test("seven-sentence explanations and the chosen language survive subsequent instructor turns", async () => {
+    const sentences = ["A szám érték.", "A változó nevet ad neki.", "A művelet értéket számol.", "A feltétel döntést hoz.", "A tömb értékeket tárol.", "A ciklus ismétel.", "A függvény egy feladatot fogalmaz meg."];
+    const first = await askInstructor({ question: "Magyarázd el magyarul.", language: "en" }, options(payload(sentences, "", "", "HU")));
+    assert.equal(first.language, "hu");
+    assert.equal(first.answer, sentences.join(" "));
+    for (const body of [{ kind: "idle" }, { kind: "error", phase: "runtime", source: 'throw Error("English diagnostic")', error: "English diagnostic" }]) {
+        const next = await askInstructor({ ...body, language: first.language }, {
+            apiKey: "test", fetchImpl: async (_, init) => {
+                assert.equal(JSON.parse(JSON.parse(init.body).input[0].content).language, "hu");
+                return Response.json(payload(["Magyarul folytatjuk.", "Nézzük meg a részleteket."], "", "", "hu"));
+            },
+        });
+        assert.equal(next.language, "hu");
+    }
+    for (const language of ["", null, 1, "not a language", "x".repeat(36)]) {
+        assert.throws(() => validateQuestion({ question: "Hi", language }), error => error.status === 400);
+        await assert.rejects(askInstructor({ question: "Hi" }, options(payload(["One.", "Two."], "", "", language))), error => error.status === 502);
+    }
 });
 
 test("instructor rejects invalid input before any provider call", async () => {
@@ -113,7 +133,7 @@ test("provider failures are actionable and do not leak credentials or raw errors
     for (const [upstream, expected] of [[401, 503], [403, 503], [429, 429], [500, 502], [400, 502]]) {
         await assert.rejects(askInstructor({ question: "Hi" }, { apiKey: "secret", fetchImpl: async () => new Response("private upstream details secret", { status: upstream }) }), error => error.status === expected && !/private|secret/.test(error.message));
     }
-    for (const result of [{ status: "incomplete" }, payload(["Only one."]), payload(["a", "b", "c", "d", "e"]), { status: "completed", output: [] }]) {
+    for (const result of [{ status: "incomplete" }, payload(["Only one."]), payload(Array(8).fill("A sentence.")), { status: "completed", output: [] }]) {
         await assert.rejects(askInstructor({ question: "Hi" }, options(result)), error => error.status === 502);
     }
     const controller = new AbortController();

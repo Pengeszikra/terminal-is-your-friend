@@ -34,6 +34,7 @@ let pending: { id: number; source: string } | undefined;
 let instructorContext: { kind: string; text: string }[] = [];
 let idleTimer = 0;
 let learnerTask = "";
+let instructorLanguage = "en";
 let idleTurn = 0;
 let autoPaused = false;
 let instructorRequest: { controller: AbortController; kind: string } | undefined;
@@ -152,7 +153,7 @@ const askInstructor = async (details: InstructorDetails, context = instructorCon
     try {
         const response = await fetch("/api/instructor", {
             method: "POST", headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ ...details, context, learnerTask, ...(details.kind === "idle" ? { idleTurn } : {}) }),
+            body: JSON.stringify({ ...details, context, learnerTask, language: instructorLanguage, ...(details.kind === "idle" ? { idleTurn } : {}) }),
             signal: AbortSignal.any([controller.signal, AbortSignal.timeout(25_000)]),
         });
         const result = await response.json();
@@ -165,6 +166,7 @@ const askInstructor = async (details: InstructorDetails, context = instructorCon
             if (controller.signal.aborted) return;
             // The model explicitly retains or clears a concrete task after questions/reviews.
             if (typeof result.learnerTask === "string") learnerTask = result.learnerTask.slice(0, 400);
+            if (typeof result.language === "string") instructorLanguage = result.language;
             if (details.kind === "idle") idleTurn++;
         }
     } catch {
@@ -476,6 +478,7 @@ resetButton.addEventListener("click", () => {
     accepted = [];
     instructorContext = [];
     learnerTask = "";
+    instructorLanguage = "en";
     idleTurn = 0;
     autoPaused = false;
     editor.classList.remove("has-errors");

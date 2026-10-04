@@ -18,6 +18,7 @@ export async function checkInstructor(browser, base) {
         if (data.question?.includes("task") || (data.kind === "review" && data.result !== "42")) learnerTask = "Compute 40 + 2.";
         await route.fulfill({ status: fail ? 503 : 200, json: fail ? { ok: false, error: "Instructor unavailable." } : {
             ok: true, learnerTask,
+            language: data.question?.includes('magyarul') ? 'hu' : data.language ?? 'en',
             answer: data.kind === "review" ? "I checked the result against our exercise. We can decide what comes next." : "Let us look at a value from another angle. How might a useful name make its purpose easier to see?",
             code: 'const label = "<img src=x>";',
         } });
@@ -26,6 +27,8 @@ export async function checkInstructor(browser, base) {
         await page.goto(base);
         const input = page.locator('#input');
         await page.locator('#input:not([disabled])').waitFor();
+        assert.equal(await input.inputValue(), '');
+        assert.equal(await input.getAttribute('placeholder'), null, 'The empty editor has no example behind the cursor');
         const greeting = page.locator('.entry-answer').first();
         const initial = await greeting.innerText();
         assert.ok(initial.length > 2 && initial.length < 100, 'Greeting starts immediately and is progressively typed');
@@ -120,7 +123,16 @@ export async function checkInstructor(browser, base) {
         await page.clock.runFor(60000);
         assert.equal(requests.length, failureCount, 'Provider failure pauses automatic retries');
         fail = false;
-        await submit('// Explain a variable');
+        await submit('// Magyarázd el magyarul');
+        await input.press('ArrowLeft');
+        await page.clock.runFor(20000);
+        await page.locator('.entry-answer[aria-busy="true"]').waitFor();
+        assert.equal(requests.at(-1).language, 'hu', 'Idle turns preserve the reply language');
+        await page.clock.runFor(6000);
+        await page.keyboard.press('Control+l');
+        await submit('missingVariable');
+        assert.equal(requests.at(-1).kind, 'error');
+        assert.equal(requests.at(-1).language, 'hu', 'Diagnostics do not reset the reply language');
 
         // Clear while typing cancels remaining characters as well as the request.
         await input.fill('// Another explanation');
@@ -134,6 +146,7 @@ export async function checkInstructor(browser, base) {
         await page.clock.runFor(20000);
         await page.locator('.entry-answer[aria-busy="true"]').waitFor();
         assert.equal(requests.at(-1).learnerTask, '');
+        assert.equal(requests.at(-1).language, 'en', 'Reset restores the initial reply language');
         assert.ok(requests.at(-1).context.every(entry => entry.kind === 'note'));
         await page.clock.runFor(6000);
         console.log('Instructor browser checks passed: immediate typewriter greeting, recurring idle turns, drafts, task/review lifecycle, cancellation, hidden tabs, failure backoff, reset and highlighted code.');

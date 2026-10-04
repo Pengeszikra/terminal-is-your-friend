@@ -4,10 +4,12 @@
 A small, dark web terminal for exploring JavaScript and TypeScript fundamentals,
 powered by Peter Vivo's type-safe pipeline-operator TypeScript fork.
 The interface uses Tailwind CSS. An AI instructor powered by the open-weight
-**gpt-oss-120b** model through Groq answers questions and explains code errors in
-2–4 short English sentences, with separate syntax-highlighted code examples.
+**gpt-oss-120b** model through Groq answers questions and explains code errors.
+Replies usually use 2–3 short sentences and may extend to 7 when an explanation needs
+more detail, with separate syntax-highlighted code examples. They follow the learner's language.
 
-All project documentation, interface text, messages, comments, and examples are written in English.
+Project documentation, interface text, comments and examples are written in English.
+Instructor replies start in English and can switch to the learner's language.
 
 ## Getting started
 
@@ -76,8 +78,14 @@ Submit a standalone single-line question with `//`:
 The instructor follows KISS: small runnable steps, regular practice and understanding
 before progression. It focuses on programming, learning, software development and the
 philosophy of code, while keeping practical human needs and cooperation in view.
-The response schema requests 2–4 sentence items and a separate code field; the server caps
-the displayed prose at four sentences. Examples appear in separate syntax-highlighted
+Replies normally use 2–3 sentences; dialogue explanations may use up to 7 when helpful,
+with a seven-sentence server cap and a separate code field. The instructor follows the
+language of the learner's natural-language messages or explicit preference. A bounded
+BCP 47 `language` field carries that choice into subsequent idle turns, exercise reviews
+and error explanations, even after the original exchange leaves the recent transcript.
+Code and English diagnostics do not reset the preference. Clear preserves it; Reset
+session restores English. This preference lasts only for the current page session.
+Examples appear in separate syntax-highlighted
 code blocks below the explanation. Neither prose nor examples are interpreted as HTML
 or executed. An `AI` marker identifies instructor replies.
 Comments inside multiline code remain ordinary TypeScript comments. AI questions do not
@@ -127,7 +135,7 @@ The AI has no tools or ability to execute code. Its explanations can be mistaken
 
 Each call has a 20-second timeout, low reasoning effort, and a 2,048-output-token
 budget that includes reasoning. Only the final answer is displayed; reasoning
-output is excluded and the four-sentence cap still applies. The instructor endpoint
+output is excluded and the seven-sentence cap still applies. The instructor endpoint
 allows at most two concurrent requests per function instance; this is not a global rate limit.
 For a public deployment, use platform rate limiting and API project spending controls.
 API credentials stay server-side and provider errors are sanitized before display.
@@ -236,6 +244,12 @@ in both modes, so avoid extra padding/newlines when you want automatic centering
 The view scrolls with the other terminal entries; it is not a fixed panel. Views are independent frames,
 so do not nest them as layout containers. The transcript and return value are separate.
 
+`<view small>...</view>` (or `small={true}`) is **three lines high and two-thirds of
+the normal view's width**. It keeps the normal view's left alignment and can combine
+with `center`: `<view small center>Hello</view>`. In a small view, one leading newline
+reaches the middle line. Both `small` and `center` belong to the individual frame;
+omitting `small` or using `small={false}` restores the normal size on the next frame.
+
 ```tsx
 const render = content => <view>{content}</view>;
 for (let frame = 0; frame < 100; frame++) {
@@ -251,7 +265,7 @@ executed. As with other cells, previous successful cells are type-checked but ne
 
 | Element | Behavior |
 | --- | --- |
-| `<view>...</view>` | Enqueue a full replacement frame inside the scrollable terminal. Optional boolean `center` centers the content horizontally and vertically. |
+| `<view>...</view>` | Enqueue a full replacement frame inside the scrollable terminal. Optional boolean `center` centers the content horizontally and vertically; `small` uses three lines and two-thirds of the normal width. |
 | `<button onClick={next}>Next</button>` | Visible, labeled button inside a view, with inverse foreground/background colors and slightly rounded corners. Calls `next()` without a DOM event. Removed when its frame is replaced. |
 | `<button onPress={handleKey} />` | Invisible, persistent listener; register once outside the rendering loop. Receives a string such as `"ArrowRight"`. |
 | `<input onInput={value => ...} />` | Input inside a view; passes the current string directly. Optional `value` and `placeholder` are strings. |
