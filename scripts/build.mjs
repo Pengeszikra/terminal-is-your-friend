@@ -1,6 +1,7 @@
 // Coded by OpenAI Codex. The fork handles TypeScript; esbuild bundles emitted JavaScript only.
 import { execFileSync } from "node:child_process";
-import { mkdir, rm, copyFile, readFile, writeFile } from "node:fs/promises";
+import { mkdir, rm, copyFile, readFile, writeFile, readdir } from "node:fs/promises";
+import { createHash } from "node:crypto";
 import { join } from "node:path";
 import { build } from "esbuild";
 import { createRequire } from "node:module";
@@ -25,4 +26,15 @@ const html = await readFile(join(root, "index.html"), "utf8");
 await writeFile(join(root, "dist/index.html"), html.replaceAll("__TIYF_VERSION__", version));
 await copyFile(join(root, "favicon.svg"), join(root, "dist/favicon.svg"));
 await copyFile(require.resolve("@jitl/quickjs-wasmfile-release-sync/wasm"), join(root, "dist/emscripten-module.wasm"));
+for (const asset of ["manifest.webmanifest", "icon-192.png", "icon-512.png"]) {
+    await copyFile(join(root, asset), join(root, "dist", asset));
+}
+const assets = (await readdir(join(root, "dist"))).sort();
+const hash = createHash("sha256");
+for (const asset of assets) hash.update(asset).update(await readFile(join(root, "dist", asset)));
+const serviceWorker = await readFile(join(root, "sw.js"), "utf8");
+hash.update(serviceWorker);
+await writeFile(join(root, "dist/sw.js"), serviceWorker
+    .replace("__BUILD_HASH__", hash.digest("hex").slice(0, 16))
+    .replace("__PRECACHE_ASSETS__", JSON.stringify(assets.map(asset => `/${asset}`))));
 console.log(`Built TiyF ${version} with the pipeline TypeScript fork + Tailwind.`);

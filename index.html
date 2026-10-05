@@ -9,6 +9,8 @@
   <meta name="description" content="A small TypeScript terminal with the pipeline operator and an isolated JavaScript sandbox.">
   <title>Terminal Is Your Friend</title>
   <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="apple-touch-icon" href="/icon-192.png">
   <link rel="stylesheet" href="/styles.css">
   <script type="module" src="/main.js"></script>
 </head>
@@ -24,6 +26,8 @@
         <button id="reset" type="button" class="text-[#a9b6ac] hover:text-white focus-visible:outline-2 focus-visible:outline-[#95d4a4]">Reset session</button>
       </div>
     </header>
+    <p id="mentor-status" role="status" class="pt-3 text-xs text-[#8f9e92]" hidden></p>
+    <p id="network-status" role="status" class="pt-3 text-xs text-[#8f9e92]" hidden>Offline — editing and running program controls still work. Reconnect to compile new code or ask the AI mentor.</p>
     <section id="terminal" tabindex="0" aria-label="TypeScript terminal" class="min-h-0 flex-1 overflow-y-auto py-6 sm:py-8">
       <div id="output" role="log" aria-live="polite" aria-relevant="additions" class="space-y-3"><div id="program-screen" class="program-screen" aria-label="Program screen" tabindex="0" hidden></div></div>
       <div id="editor-row" class="mt-5 grid grid-cols-[1.5rem_minmax(0,1fr)] items-start gap-2">

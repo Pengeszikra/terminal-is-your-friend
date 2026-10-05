@@ -2,6 +2,10 @@
 
 **[Try it in your browser →](https://terminal-is-your-friend.vercel.app/)**
 
+Install it through your browser’s **Install app** / **Add to Home Screen** option.
+The AI mentor is optional: if it is unavailable, you can keep coding.
+Compiling new TypeScript still requires a connection to the server.
+
 A small terminal for learning programming by writing code, seeing what happens,
 and understanding why. Start with JavaScript, add TypeScript when describing your
 values becomes useful, and build a small interactive program once the foundations

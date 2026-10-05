@@ -135,7 +135,7 @@ export async function checkInstructor(browser, base) {
         });
         fail = true;
         await page.clock.runFor(20000);
-        await page.locator('.entry-error').filter({ hasText: 'Instructor unavailable' }).waitFor();
+        await page.locator('#mentor-status').filter({ hasText: 'AI mentor unavailable' }).waitFor();
         const failureCount = requests.length;
         await page.clock.runFor(60000);
         assert.equal(requests.length, failureCount, 'Provider failure pauses automatic retries');
