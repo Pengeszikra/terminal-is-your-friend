@@ -9,7 +9,12 @@ const channel = globalThis as unknown as {
 createSandbox(output => channel.postMessage({ type: "output", output })).then(sandbox => {
     channel.onmessage = event => {
         const { type, javascript, id } = event.data;
-        if (type === "run" && typeof javascript === "string") channel.postMessage({ type: "result", id, result: sandbox.evaluate(javascript) });
+        if (type === "run" && typeof javascript === "string") {
+            // End the previous run's playback, keeping variables and persistent key listeners.
+            sandbox.clearViews();
+            channel.postMessage({ type: "view-start", id });
+            channel.postMessage({ type: "result", id, result: sandbox.evaluate(javascript) });
+        }
         else if (type === "event") channel.postMessage({ type: "event-result", id, result: sandbox.dispatch(event.data.event) });
         else if (type === "clear-views") sandbox.clearViews();
         else if (type === "reset") { sandbox.reset(); channel.postMessage({ type: "ready" }); }

@@ -210,7 +210,7 @@ idea—a function describes what should happen when it is called.
 
 - `<view>` creates a screen. `small` makes it three lines high and two-thirds of the normal width; `center` centers its content.
 - `<button onClick={...}>next</button>` calls the arrow function when clicked.
-- Each new view joins a queue and replaces the previous screen in order, every 250 ms. Only one screen is visible at a time.
+- Within one execution, views play in order every 250 ms in one active screen below the return value. A new execution freezes the previous screen as an inactive snapshot and starts a fresh screen; pending frames from the previous execution are discarded. Earlier snapshots remain in the transcript until cleared or trimmed.
 
 View text uses a monospace `<code>` element: spaces and line breaks are preserved.
 A normal view is seven lines high. `return` ends the current submission; it does

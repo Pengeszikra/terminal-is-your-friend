@@ -239,9 +239,14 @@ const startWorker = () => {
             ready = true;
             input.disabled = false;
             finish();
+        } else if (event.data.type === "view-start" && pending?.id === event.data.id) {
+            // Worker ordering ensures old frames arrive before we freeze the previous screen.
+            screen.archive();
+            screen.clear();
+            eventQueue = [];
         } else if (event.data.type === "frame") {
             const followOutput = terminal.scrollHeight - terminal.scrollTop - terminal.clientHeight < 40;
-            if (screenElement.hidden || !screenElement.isConnected) output.append(screenElement);
+            if (!screenElement.isConnected) output.append(screenElement);
             screen.render(event.data.frame as ViewFrame);
             if (followOutput) scroll();
             activity();
@@ -275,6 +280,8 @@ const startWorker = () => {
                     result: result.value ?? "undefined", output: executionOutput }, "preserved");
                 accepted.push(pending.source);
                 append("result", result.value ?? "undefined", "←");
+                // Reserve the new screen's position before asynchronous instructor replies.
+                output.append(screenElement);
             } else {
                 append("error", result.error ?? "Execution failed.", "!");
                 if (result.reset) {
@@ -468,7 +475,7 @@ document.addEventListener("keydown", event => {
         activity();
         const target = event.target as HTMLElement;
         if (!event.isComposing && !event.ctrlKey && !event.metaKey && !event.altKey &&
-            target !== input && target.tagName !== "INPUT" && target.tagName !== "TEXTAREA" && !target.isContentEditable) {
+            target !== input && target.tagName !== "INPUT" && target.tagName !== "TEXTAREA" && !target.isContentEditable && !target.closest(".view-snapshot")) {
             screen.key(event.key);
             if (screenElement.contains(target) && ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", " "].includes(event.key)) event.preventDefault();
         }
