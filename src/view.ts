@@ -4,6 +4,19 @@ import type { ViewFrame, ViewEvent } from "./view-runtime.js";
 export function createViewScreen(element: HTMLElement, send: (event: ViewEvent) => void) {
     let current = 0;
     return {
+        archive() {
+            if (element.hidden || !element.isConnected) return;
+            // A transcript snapshot has no event listeners and cannot edit live program state.
+            const snapshot = element.cloneNode(true) as HTMLElement;
+            snapshot.removeAttribute("id");
+            snapshot.removeAttribute("tabindex");
+            snapshot.classList.add("view-snapshot");
+            snapshot.setAttribute("aria-label", "Previous program screen (inactive)");
+            snapshot.querySelectorAll<HTMLButtonElement | HTMLInputElement>("button, input").forEach(control => { control.disabled = true; });
+            element.before(snapshot);
+            snapshot.scrollTop = element.scrollTop;
+            snapshot.scrollLeft = element.scrollLeft;
+        },
         render(frame: ViewFrame) {
             current = frame.id;
             const content = document.createElement("code");

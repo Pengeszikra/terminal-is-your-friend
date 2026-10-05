@@ -34,6 +34,9 @@ export async function checkViews(page, run) {
     assert.ok(Math.abs(scrollMovement.movement - scrollMovement.scroll) < 1, 'The view scrolls with terminal entries');
     await run('<view center><button onClick={() => {}}>Centered</button></view>');
     await screen.getByRole('button', { name: 'Centered' }).waitFor();
+    assert.equal(await page.locator('.view-snapshot').last().textContent(), '1', 'Previous execution keeps its last displayed frame');
+    assert.equal(await screen.evaluate(element => element.previousElementSibling.classList.contains('entry-result')), true, 'New screen follows its own return value');
+    assert.equal(await page.locator('.view-snapshot').last().evaluate(element => element.previousElementSibling.textContent.includes('counting')), true, 'Old screen stays with its own return value');
     const centered = await screen.evaluate(element => {
         const outer = element.getBoundingClientRect();
         const inner = element.querySelector('code').getBoundingClientRect();
@@ -49,6 +52,8 @@ export async function checkViews(page, run) {
     assert.ok(centered.radius > 0 && centered.radius < 8);
     await run('<view small center><button onClick={() => {}}>Small</button></view>');
     await screen.getByRole('button', { name: 'Small', exact: true }).waitFor();
+    assert.equal(await page.locator('.view-snapshot').last().getByRole('button', { name: 'Centered' }).isDisabled(), true, 'Snapshot controls are inactive');
+    assert.equal(await page.locator('#program-screen').count(), 1, 'Only one live screen has the active ID');
     const small = await screen.evaluate(element => {
         const outer = element.getBoundingClientRect();
         const inner = element.querySelector('code').getBoundingClientRect();
@@ -66,6 +71,23 @@ export async function checkViews(page, run) {
     assert.equal(restored.small, false);
     assert.equal(restored.height, layout.height);
     assert.ok(Math.abs(restored.width - layout.width) <= 1, 'A normal frame restores full width');
+
+    const snapshotsBeforeError = await page.locator('.view-snapshot').count();
+    await run('const broken = ;');
+    assert.equal(await screen.textContent(), 'Left', 'Compilation failure preserves the active screen');
+    assert.equal(await page.locator('.view-snapshot').count(), snapshotsBeforeError);
+    await run('2 + 3');
+    assert.equal(await screen.isVisible(), false, 'A calculation does not display an empty view');
+    assert.equal(await page.locator('.view-snapshot').last().textContent(), 'Left');
+
+    await run('for(let n=0;n<20;n++) <view>{n}</view>;');
+    await screen.waitFor({ state: 'visible' });
+    await run('<view>New run</view>');
+    await page.waitForFunction(() => document.querySelector('#program-screen').textContent === 'New run');
+    const frozenFrame = await page.locator('.view-snapshot').last().textContent();
+    await page.waitForTimeout(600);
+    assert.equal(await screen.textContent(), 'New run', 'Old queued frames cannot overwrite the new execution');
+    assert.equal(await page.locator('.view-snapshot').last().textContent(), frozenFrame);
 
     await run('<view>\n\n\n          Middle\n\n\n</view>');
     await page.waitForFunction(() => document.querySelector('#program-screen').textContent.includes('Middle'));
@@ -90,6 +112,8 @@ export async function checkViews(page, run) {
     await page.waitForTimeout(100);
     await run('<view><input onInput={value => { entered=value; }} /></view>;');
     await page.waitForFunction(() => document.querySelector('#program-screen input')?.value === '');
+    assert.equal(await page.locator('.view-snapshot').last().locator('input').inputValue(), 'discard me', 'Snapshot preserves edited input value');
+    assert.equal(await page.locator('.view-snapshot').last().locator('input').isDisabled(), true);
 
     await run('let keyCount=0; <button onPress={key => { if(key === "ArrowRight") { keyCount++; <view>{keyCount}</view>; } }} />; <view>Keys</view>;');
     await page.waitForFunction(() => document.querySelector('#program-screen').textContent === 'Keys');
@@ -106,6 +130,7 @@ export async function checkViews(page, run) {
     await editor.fill('');
     await page.keyboard.press('Control+l');
     assert.equal(await screen.isVisible(), false);
+    assert.equal(await page.locator('.view-snapshot').count(), 0, 'Clear removes archived views too');
     await run('<view>Again</view>');
     await page.waitForFunction(() => document.querySelector('#program-screen').textContent === 'Again');
     await screen.focus();
