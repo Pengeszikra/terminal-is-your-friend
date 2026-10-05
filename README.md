@@ -2,6 +2,8 @@
 
 **[Try it in your browser →](https://terminal-is-your-friend.vercel.app/)**
 
+![sure to this program run on on terminal in the background!](docs/tiyf-header.png)
+
 Install it through your browser’s **Install app** / **Add to Home Screen** option.
 The AI mentor is optional: if it is unavailable, you can keep coding.
 Compiling new TypeScript still requires a connection to the server.
