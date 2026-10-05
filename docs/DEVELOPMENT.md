@@ -79,6 +79,11 @@ session restores English. This preference lasts only for the current page sessio
 Examples appear in separate syntax-highlighted
 code blocks below the explanation. Neither prose nor examples are interpreted as HTML
 or executed. An `AI` marker identifies instructor replies.
+The instructor occasionally offers a runnable one-line demonstration with a visible
+result, starting with numbers and strings for beginners. Pipelines are optional and
+pass exactly one argument; functions requiring multiple arguments use ordinary calls.
+Error guidance favors the smallest correction using existing variables and acknowledges
+incorrect earlier advice instead of forcing currying or redeclaring a preserved `const`.
 Comments inside multiline code remain ordinary TypeScript comments. AI questions do not
 change variables, consume compilation history slots, or trigger background type-checking.
 
