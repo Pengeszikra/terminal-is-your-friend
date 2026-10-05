@@ -13,6 +13,8 @@ const terminal = document.querySelector<HTMLElement>("#terminal")!;
 const code = document.querySelector<HTMLElement>("#highlight-code")!;
 const editor = document.querySelector<HTMLElement>(".editor")!;
 const status = document.querySelector<HTMLElement>("#status")!;
+const mentorStatus = document.querySelector<HTMLElement>("#mentor-status")!;
+const networkStatus = document.querySelector<HTMLElement>("#network-status")!;
 const resetButton = document.querySelector<HTMLButtonElement>("#reset")!;
 const screenElement = document.querySelector<HTMLElement>("#program-screen")!;
 let eventWatchdog = 0;
@@ -112,6 +114,13 @@ const append = (kind: string, text: string, marker = "", example = "", record = 
 const cancelInstructor = () => {
     instructorRequest?.controller.abort();
     instructorRequest = undefined;
+    if (!autoPaused) mentorStatus.hidden = true;
+};
+
+const mentorUnavailable = () => {
+    autoPaused = true;
+    mentorStatus.textContent = "AI mentor unavailable — you can keep coding. Send // to retry.";
+    mentorStatus.hidden = false;
 };
 
 const presentInstructor = async (answer: string, example: string, controller: AbortController) => {
@@ -135,7 +144,7 @@ const presentInstructor = async (answer: string, example: string, controller: Ab
 };
 
 const canInitiate = () => ready && !busy && eventPending === undefined && !instructorRequest &&
-    !learnerTask && !autoPaused && !input.value.trim() && !document.hidden &&
+    !learnerTask && !autoPaused && navigator.onLine && !input.value.trim() && !document.hidden &&
     !screenElement.contains(document.activeElement);
 
 const scheduleConversation = () => {
@@ -148,23 +157,31 @@ const scheduleConversation = () => {
 
 type InstructorDetails = { kind: "question" | "idle" | "error" | "review"; question?: string; source?: string; error?: string; phase?: "compile" | "runtime"; result?: string };
 const askInstructor = async (details: InstructorDetails, context = instructorSession.context.slice()) => {
+    if (!navigator.onLine) { mentorUnavailable(); return; }
+    if (autoPaused && details.kind !== "question") return;
     cancelInstructor();
     window.clearTimeout(idleTimer);
+    autoPaused = false;
+    mentorStatus.textContent = "AI mentor: thinking…";
+    mentorStatus.hidden = false;
     const controller = new AbortController();
     instructorRequest = { controller, kind: details.kind };
+    let timedOut = false;
+    const timeout = window.setTimeout(() => { timedOut = true; controller.abort(); }, 25_000);
     try {
         const response = await fetch("/api/instructor", {
             method: "POST", headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ ...details, context, memory: instructorSession.memory, codeState: instructorSession.codeState,
                 learnerTask, language: instructorLanguage, ...(details.kind === "idle" ? { idleTurn } : {}) }),
-            signal: AbortSignal.any([controller.signal, AbortSignal.timeout(25_000)]),
+            signal: controller.signal,
         });
         const result = await response.json();
         if (controller.signal.aborted) return;
         if (!response.ok || !result.ok || typeof result.answer !== "string") {
-            autoPaused = true;
-            append("error", result.error || "Instructor request failed.", "!");
+            mentorUnavailable();
         } else {
+            window.clearTimeout(timeout);
+            mentorStatus.hidden = true;
             await presentInstructor(result.answer, typeof result.code === "string" ? result.code : "", controller);
             if (controller.signal.aborted) return;
             instructorSession.updateMemory(result.memory);
@@ -174,11 +191,9 @@ const askInstructor = async (details: InstructorDetails, context = instructorSes
             if (details.kind === "idle") idleTurn++;
         }
     } catch {
-        if (!controller.signal.aborted) {
-            autoPaused = true;
-            append("error", "Could not reach the instructor. Please try again.", "!");
-        }
+        if (!controller.signal.aborted || timedOut) mentorUnavailable();
     } finally {
+        window.clearTimeout(timeout);
         if (instructorRequest?.controller === controller) instructorRequest = undefined;
         scheduleConversation();
     }
@@ -328,7 +343,7 @@ const scheduleCheck = () => {
     window.clearTimeout(checkTimer);
     checkController?.abort();
     editor.classList.remove("has-errors");
-    if (!input.value.trim() || busy || instructorQuestion(input.value) !== null) return;
+    if (!navigator.onLine || !input.value.trim() || busy || instructorQuestion(input.value) !== null) return;
     const source = input.value;
     checkTimer = window.setTimeout(async () => {
         const controller = new AbortController();
@@ -351,12 +366,15 @@ const submit = async () => {
     const source = input.value |> normalize;
     if (!withinLimits(source)) { append("error", "Limit: 100 lines and 8 KB per submission.", "!"); return; }
     const question = instructorQuestion(source);
+    if (question === null && !navigator.onLine) {
+        label("Offline — reconnect to compile new code. Your draft is kept.");
+        return;
+    }
     if (question !== null && (!question || question.length > 4000)) {
         append("error", "Enter a question of up to 4,000 characters after //.", "!");
         return;
     }
     const context = instructorSession.context.slice();
-    autoPaused = false;
     cancelInstructor();
     window.clearTimeout(idleTimer);
     window.clearTimeout(checkTimer);
@@ -370,14 +388,11 @@ const submit = async () => {
     redraw();
     editor.classList.remove("has-errors");
     append(question === null ? "command" : "question", source, "❯");
-    setBusy(true);
     if (question !== null) {
-        label("Asking instructor…");
-        try {
-            await askInstructor({ kind: "question", question }, context);
-        } finally { finish(); }
+        void askInstructor({ kind: "question", question }, context);
         return;
     }
+    setBusy(true);
     label("Checking TypeScript…");
     executionOutput = "";
     try {
@@ -513,3 +528,29 @@ resetButton.addEventListener("click", () => {
 redraw();
 startWorker();
 void greet();
+
+// Connectivity never locks the editor or the running program's controls.
+const updateConnection = () => {
+    networkStatus.hidden = navigator.onLine;
+    if (!navigator.onLine) {
+        cancelInstructor();
+        mentorUnavailable();
+        window.clearTimeout(idleTimer);
+        window.clearTimeout(checkTimer);
+        checkController?.abort();
+    } else {
+        autoPaused = false;
+        mentorStatus.hidden = true;
+        scheduleCheck();
+        scheduleConversation();
+        if (ready && !busy) label("TSX |> · sandbox ready");
+    }
+};
+window.addEventListener("online", updateConnection);
+window.addEventListener("offline", updateConnection);
+if (!navigator.onLine) updateConnection();
+if ("serviceWorker" in navigator) {
+    void navigator.serviceWorker.register("/sw.js", { updateViaCache: "none" }).catch(() => {
+        // Installation is optional; the normal terminal remains usable if caching is unavailable.
+    });
+}

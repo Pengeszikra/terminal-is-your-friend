@@ -1,4 +1,5 @@
 // Coded by OpenAI Codex. Optional end-to-end checks; install Chromium with npx playwright install chromium.
+import { checkPWA } from "./check-pwa-browser.mjs";
 import { checkInstructor } from "./check-instructor-browser.mjs";
 import { checkViews } from "./check-views-browser.mjs";
 import { chromium } from "playwright";
@@ -47,6 +48,7 @@ try {
         await input.fill(source);
         await input.press("Enter");
         await page.waitForFunction(() => !document.querySelector("#input").readOnly && !document.querySelector("#input").disabled);
+        if (source.startsWith("// ") && !source.includes("\n")) await page.waitForFunction(() => document.querySelector("#mentor-status").textContent !== "AI mentor: thinking…" || document.querySelector("#mentor-status").hidden);
         return page.locator("#output").innerText();
     };
     assert.match(await run("const twice = (n: number) => n * 2;"), /undefined/);
@@ -91,6 +93,8 @@ try {
     assert.equal(questions.length, 0);
     await input.press("Enter");
     await page.waitForFunction(() => !document.querySelector("#input").readOnly);
+    await page.locator(".entry-answer .instructor-code").last().waitFor();
+    await page.waitForFunction(() => document.querySelector("#mentor-status").hidden);
     assert.equal(questions.length, 1);
     assert.equal(questions[0].question, "Why did my code fail?");
     assert.ok(questions[0].codeState.executions.some(entry => entry.status === "error" && entry.error.includes("not assignable")));
@@ -107,7 +111,7 @@ try {
     assert.equal(await page.locator(".entry-result").last().innerText(), "←\n42");
     instructorFails = true;
     await run("// What is the capital of France?");
-    assert.match(await page.locator(".entry-error").last().innerText(), /not configured/);
+    assert.match(await page.locator("#mentor-status").innerText(), /unavailable/);
     await run("answer");
     assert.equal(await page.locator(".entry-result").last().innerText(), "←\n40");
     instructorFails = false;
@@ -175,6 +179,7 @@ try {
     assert.deepEqual(failures, []);
 
     await checkInstructor(browser, base);
+    await checkPWA(browser, base);
     console.log("Browser checks passed: instant greeting, proactive task-aware instructor, pipeline, state, input/history, diagnostics, typewriter/highlighted AI code, cancellation, isolation, views, desktop and mobile (mock AI API).");
 } finally {
     await browser.close();

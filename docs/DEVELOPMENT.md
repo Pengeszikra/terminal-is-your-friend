@@ -57,7 +57,7 @@ with Groq; the application does not fall back to the previous provider or model.
 
 Locally, copy `.env.example` to `.env`, fill in the key, and run `npm start`.
 The server loads `.env`; Git ignores it. Code execution still works without an API key,
-and asking a question shows a clear setup message until the key is configured.
+and asking a question shows a nonblocking unavailable status until the key is configured.
 
 Submit a standalone single-line question with `//`:
 
@@ -113,7 +113,7 @@ model, not a deterministic grading engine, and can be mistaken.
 
 Questions, proactive messages, exercise reviews, and submitted-code compilation/runtime
 failures call Groq. The immediate greeting and background type checks do not. Automatic
-requests pause after a provider failure until a new submission or reset, avoiding a
+requests pause after a provider failure until an explicit question, reconnection or reset, avoiding a
 repeated error loop. Each proactive message is a normal API call and consumes quota.
 For failures, the instructor receives the complete submitted code (up to 8 KB / 100 lines),
 the error message (up to 16,000 characters), and whether compilation or execution failed.
@@ -292,3 +292,23 @@ the original checkout stays untouched. A complete local clone needs no network.
 Rebuilds stay pinned to their original commit even if `main` advances. Builds fail
 with a clear error if the commit or its history is unavailable; a source ZIP needs
 the matching `VERCEL_GIT_COMMIT_SHA`, or can be replaced with a Git clone.
+
+## Installable app (PWA)
+
+Use the browser's **Install app** / **Add to Home Screen** option on the HTTPS deployment.
+The manifest opens TiyF in its own window. No PWA framework or extra dependency is needed.
+A service worker precaches the app shell and sandbox WASM. Its cache key follows the build
+contents; updates activate after existing app tabs/windows close, without reloading a session.
+AI replies, submitted source and API responses are never cached. Installation/cache failure
+does not prevent normal online use.
+
+The AI mentor is optional: questions run in the background and never lock the editor, Reset
+or program controls. Network, HTTP, malformed-response and timeout failures show one quiet
+status message. Automatic requests pause; an explicit `//` question retries. New code cancels
+stale mentor responses, and a late reply cannot unlock an unrelated compilation.
+
+**This is not an offline TypeScript compiler.** The native pipeline fork still runs on the
+server. Once cached, the app opens without internet and allows editing; controls in an already
+running program continue to work. New code needs `/api/compile`. An offline submission keeps
+its draft and explains that connection is needed. Reloading still clears session variables
+and code, just as before. The offline app needs an earlier successful online visit to cache it.
